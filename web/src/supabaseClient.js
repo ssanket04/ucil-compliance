@@ -242,12 +242,7 @@ export async function fetchEvidenceTimeline(evidenceId) {
 }
 
 export async function uploadEvidence(controlId, file) {
-  const filePath = `evidence/${controlId}/${Date.now()}_${file.name}`;
-  const { error: uploadError } = await sb.storage
-    .from('evidence-files').upload(filePath, file, { upsert: false });
-  if (uploadError) throw uploadError;
-  
-  // Calculate SHA-256 hash client-side for audit non-repudiation
+  // Step 1: Calculate SHA-256 BEFORE upload — if crypto fails, abort entirely
   let sha256Hash = null;
   try {
     const arrayBuffer = await file.arrayBuffer();
@@ -255,9 +250,21 @@ export async function uploadEvidence(controlId, file) {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     sha256Hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   } catch (hashErr) {
-    console.error('Failed to calculate SHA-256 hash:', hashErr);
+    console.error('SHA-256 hash calculation failed:', hashErr);
   }
 
+  // Hard enforcement: do NOT allow uploads without a cryptographic signature
+  if (!sha256Hash) {
+    throw new Error('File integrity check failed. Your browser does not support secure file hashing. Please use a modern browser (Chrome 90+, Firefox 90+, Edge 90+) to upload evidence.');
+  }
+
+  // Step 2: Upload file to storage
+  const filePath = `evidence/${controlId}/${Date.now()}_${file.name}`;
+  const { error: uploadError } = await sb.storage
+    .from('evidence-files').upload(filePath, file, { upsert: false });
+  if (uploadError) throw uploadError;
+
+  // Step 3: Insert metadata with verified hash
   const { data, error } = await sb.from('evidence').insert({
     control_id:  controlId,
     file_name:   file.name,
@@ -271,6 +278,7 @@ export async function uploadEvidence(controlId, file) {
   if (error) throw error;
   return data;
 }
+
 
 export async function approveEvidence(evidenceId) {
   const { data, error } = await sb.from('evidence').update({

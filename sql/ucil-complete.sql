@@ -104,9 +104,27 @@ CREATE TABLE public.sme_review_queue (
   reviewed_at      TIMESTAMPTZ,
   justification    TEXT,
   assigned_to      UUID REFERENCES public.users(id),
+  assigned_at      TIMESTAMPTZ,
+  expires_at       TIMESTAMPTZ,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Auto-set expires_at 72 hours after assignment
+CREATE OR REPLACE FUNCTION public.set_sme_expiry()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.assigned_to IS NOT NULL AND OLD.assigned_to IS DISTINCT FROM NEW.assigned_to THEN
+    NEW.assigned_at := NOW();
+    NEW.expires_at  := NOW() + INTERVAL '72 hours';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_set_sme_expiry
+  BEFORE UPDATE ON public.sme_review_queue
+  FOR EACH ROW EXECUTE FUNCTION public.set_sme_expiry();
 
 -- 7. GAPS
 CREATE TABLE public.gaps (
@@ -378,6 +396,11 @@ $$ LANGUAGE SQL SECURITY DEFINER STABLE;
 CREATE OR REPLACE FUNCTION public.get_user_domain()
 RETURNS TEXT AS $$
   SELECT domain FROM public.users WHERE id = auth.uid();
+$$ LANGUAGE SQL SECURITY DEFINER STABLE;
+
+CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
+RETURNS UUID AS $$
+  SELECT tenant_id FROM public.users WHERE id = auth.uid();
 $$ LANGUAGE SQL SECURITY DEFINER STABLE;
 
 
