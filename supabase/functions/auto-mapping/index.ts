@@ -113,12 +113,13 @@ Which existing control best matches this clause? Return the best match index and
           // Low-confidence mappings NEVER enter SME queue (prevents noise)
           autoRejected++
           await supabase.from('gaps').insert({
-            gap_code:    `GAP-${framework_id.slice(0,8)}-${clause.ref.replace(/\./g,'')}`,
-            clause_ref:  clause.ref,
-            severity:    result.confidence <= 0 ? 'critical' : 'medium',
-            description: `No matching control found for ${clause.ref}: ${clause.text.substring(0, 100)}`,
+            gap_code:     `GAP-${framework_id.slice(0,8)}-${clause.ref.replace(/\./g,'')}`,
+            framework_id,
+            clause_ref:   clause.ref,
+            severity:     result.confidence <= 0 ? 'critical' : 'medium',
+            description:  `No matching control found for ${clause.ref}: ${clause.text.substring(0, 100)}`,
             why_critical: result.rationale || null,
-            status:      'Open',
+            status:       'Open',
           }).select().maybeSingle()
         }
 
