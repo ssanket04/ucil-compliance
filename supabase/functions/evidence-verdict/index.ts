@@ -55,6 +55,29 @@ Deno.serve(async (req) => {
 
     if (fileErr || !fileData) return errorResponse('Could not download evidence file', 500)
 
+    // Calculate server-side SHA-256 hash to verify upload integrity
+    let serverHash = ''
+    let hashMatched = true
+    try {
+      const buffer = await fileData.arrayBuffer()
+      const hashBuffer = await crypto.subtle.digest("SHA-256", buffer)
+      const hashArray = Array.from(new Uint8Array(hashBuffer))
+      serverHash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("")
+      
+      if (evidence.sha256_hash && evidence.sha256_hash !== serverHash) {
+        hashMatched = false
+      }
+      
+      if (!evidence.sha256_hash && serverHash) {
+        await supabase
+          .from('evidence')
+          .update({ sha256_hash: serverHash })
+          .eq('id', evidence_id)
+      }
+    } catch (hashErr) {
+      console.error('Server-side hash check failed:', hashErr)
+    }
+
     // 3. Extract text from file
     // For PDFs and text files, read as text. Binary files get a note.
     let fileText = ''
@@ -99,13 +122,21 @@ Determine if this evidence sufficiently proves the control is in place.`
     }>(prompt, SYSTEM, 1200)
 
     // 5. Save AI verdict to evidence table
+    const finalRedFlags = [...result.red_flags]
+    let finalDetail = result.detail
+    
+    if (!hashMatched) {
+      finalRedFlags.push('Cryptographic signature mismatch detected!')
+      finalDetail = `[SECURITY WARNING: Client-submitted file hash (${evidence.sha256_hash || 'none'}) did not match the file hash calculated on the server (${serverHash}). The evidence file may have been altered during transmission.]\n\n` + finalDetail
+    }
+
     await supabase
       .from('evidence')
       .update({
-        ai_verdict:         result.verdict,
-        ai_verdict_detail:  result.detail,
+        ai_verdict:         !hashMatched ? 'Rejected' : result.verdict,
+        ai_verdict_detail:  finalDetail,
         ai_missing_elements: result.missing.join('; '),
-        ai_red_flags:       result.red_flags.join('; '),
+        ai_red_flags:       finalRedFlags.join('; '),
         updated_at:         new Date().toISOString(),
       })
       .eq('id', evidence_id)
