@@ -150,6 +150,7 @@ CREATE TABLE public.evidence (
   observations     TEXT,
   rejection_reason TEXT,
   reassigned_to    UUID REFERENCES public.users(id),
+  sha256_hash      TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -296,6 +297,7 @@ SELECT
   e.id, e.control_id, e.file_name, e.file_path, e.file_size,
   e.status, e.manual_remark, e.ai_verdict, e.ai_verdict_detail,
   e.ai_missing_elements, e.ai_red_flags, e.observations, e.rejection_reason,
+  e.sha256_hash,
   e.upload_date, e.review_date,
   c.control_code, c.name AS control_name,
   d.name AS domain_name,
