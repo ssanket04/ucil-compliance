@@ -12,6 +12,8 @@
 ALTER TABLE public.evidence ADD COLUMN IF NOT EXISTS sha256_hash TEXT;
 
 -- ── 2. RECREATE EVIDENCE VIEW TO SELECT HASH COLUMN ─────────
+DROP VIEW IF EXISTS public.v_evidence_full CASCADE;
+
 CREATE OR REPLACE VIEW public.v_evidence_full AS
 SELECT
   e.id, e.control_id, e.file_name, e.file_path, e.file_size,
