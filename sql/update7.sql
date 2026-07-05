@@ -28,7 +28,7 @@ BEGIN
     OLD.id,
     OLD.status,
     OLD.confidence_score,
-    'ffffffff-ffff-ffff-ffff-ffffffffffff', -- system actor (safe for automated triggers)
+    NULL, -- NULL = system/automated trigger (no auth.uid() context available)
     'Auto-snapshot: status changed from ' || coalesce(OLD.status,'—')
     || ' to ' || coalesce(NEW.status,'—')
   );

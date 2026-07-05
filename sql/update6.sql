@@ -27,8 +27,10 @@ ALTER TABLE public.users
 -- ── 6.2. DEMOTE SYSTEM ACTOR TO 'System' ROLE ────────────────
 -- Remove Admin permissions from the system sentinel user
 UPDATE public.users
-  SET role = 'System'
-WHERE id = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+-- NOTE: System actor sentinel user was removed because public.users.id
+-- has a FK to auth.users(id) in Supabase. Fake UUIDs cannot be inserted.
+-- System-initiated actions use NULL for performed_by/changed_by instead.
+-- This is documented and expected behaviour — NULL = automated process.
 
 -- ── 6.3. SYSTEM ROLE — ZERO PERMISSION RLS POLICY ────────────
 -- System role can insert audit logs but cannot SELECT/UPDATE anything
