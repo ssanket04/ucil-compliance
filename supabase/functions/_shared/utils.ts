@@ -12,6 +12,24 @@ export function getSupabaseAdmin() {
   )
 }
 
+// ── Load active AI prompt from database (hot-swappable) ───────
+export async function getActivePrompt(functionName: string, fallback: string): Promise<string> {
+  try {
+    const supabase = getSupabaseAdmin()
+    const { data } = await supabase
+      .from('ai_prompts')
+      .select('prompt_text')
+      .eq('function_name', functionName)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    return data?.prompt_text || fallback
+  } catch {
+    return fallback
+  }
+}
+
 // ── Call Groq API (replaces Claude) ───────────────────────────
 export async function callClaude(prompt: string, systemPrompt: string, maxTokens = 1500): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY')!

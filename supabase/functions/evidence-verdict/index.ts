@@ -5,9 +5,9 @@
 // POST body: { evidence_id, control_id }
 // Returns:   { verdict, covered, missing, red_flags, detail }
 
-import { callClaudeJSON, CORS, jsonResponse, errorResponse, getSupabaseAdmin, sendNotification } from '../_shared/utils.ts'
+import { callClaudeJSON, CORS, jsonResponse, errorResponse, getSupabaseAdmin, sendNotification, getActivePrompt } from '../_shared/utils.ts'
 
-const SYSTEM = `You are a compliance auditor reviewing evidence documents.
+const SYSTEM_FALLBACK = `You are a compliance auditor reviewing evidence documents.
 Your job is to assess whether the uploaded evidence adequately proves that a compliance control is implemented.
 
 Be specific, objective, and actionable in your findings.
@@ -36,6 +36,9 @@ Deno.serve(async (req) => {
     if (!evidence_id || !control_id) {
       return errorResponse('evidence_id and control_id are required', 400)
     }
+
+    // Load active prompt from DB (hot-swappable without redeploy)
+    const SYSTEM = await getActivePrompt('evidence-verdict', SYSTEM_FALLBACK)
 
     const supabase = getSupabaseAdmin()
 

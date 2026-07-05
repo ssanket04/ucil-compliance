@@ -6,9 +6,9 @@
 // POST body: { framework_id, clauses: [{ref, text}] }
 // Returns:   { processed, auto_approved, sme_queue, auto_rejected, conflicts_found }
 
-import { callClaudeJSON, CORS, jsonResponse, errorResponse, getSupabaseAdmin } from '../_shared/utils.ts'
+import { callClaudeJSON, CORS, jsonResponse, errorResponse, getSupabaseAdmin, getActivePrompt } from '../_shared/utils.ts'
 
-const SYSTEM = `You are a compliance mapping engine.
+const SYSTEM_FALLBACK = `You are a compliance mapping engine.
 Compare a new framework clause against multiple existing controls and find the best match.
 
 Respond ONLY with valid JSON:
@@ -34,6 +34,9 @@ Deno.serve(async (req) => {
     }
 
     const supabase = getSupabaseAdmin()
+
+    // Load active prompt from DB (hot-swappable without redeploy)
+    const SYSTEM = await getActivePrompt('auto-mapping', SYSTEM_FALLBACK)
 
     // Fetch all canonical controls
     const { data: controls } = await supabase
