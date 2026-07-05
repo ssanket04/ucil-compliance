@@ -1,8 +1,4 @@
-/* ============================================================
-   DATA.JS — Central data store (replace with API calls later)
-   ============================================================ */
-const DATA = {
-
+export const DATA = {
   metrics: {
     uniqueCanonical: 200,
     implemented: 150,
@@ -87,8 +83,6 @@ const DATA = {
       status: 'Active', domainColor: 'green', confidence: 0.86,
       reason: 'Retention schedule approved and implemented.',
     },
-    // Generate remaining 194 controls with proper status distribution
-    // Total: Active: 150 (4 detailed + 146 generated), Under Review: 43 (1 detailed + 42 generated), Failed: 7 (1 detailed + 6 generated)
     ...Array.from({ length: 194 }, (_, i) => {
       const id = `CC-${String(i + 400).padStart(4, '0')}`;
       const domains = ['Access Control', 'Privileged Access', 'Incident Mgmt', 'Data Protection', 'Change Mgmt'];
@@ -97,7 +91,6 @@ const DATA = {
       const frameworks = [['ISO A.8.2', 'SOX ITGC'], ['NIST PR.AC', 'PCI 7.2'], ['ISO A.16.1', 'RBI 5.2'], ['PCI 3.5', 'ISO A.8.24']];
       const domain = domains[i % domains.length];
       
-      // Status distribution: Active: 146 more (150-4), Under Review: 42 more (43-1), Failed: 6 more (7-1)
       let status, reason;
       if (i < 6) {
         status = 'Failed';
@@ -196,23 +189,19 @@ const DATA = {
       title: 'Cyber Resilience Framework Update', 
       issuer: 'RBI', 
       date: '12 Apr 2025', 
-      impactedControls: 85,  // 85 unique controls map to RBI CSF (out of 200 total)
-      gaps: 3,               // 3 of these 85 controls have Failed status (part of 7 total gaps)
+      impactedControls: 85,
+      gaps: 3,
       status: 'In review', 
       severity: 'critical',
-      // Impacted controls: All controls that map to RBI CSF
       impactedIds: [
         { id: 'CC-0041', name: 'User access review', status: 'Active' },
         { id: 'CC-0089', name: 'Privileged access logging', status: 'Active' },
         { id: 'CC-0112', name: 'Incident response testing', status: 'Under Review' },
         { id: 'CC-0203', name: 'Encryption at rest', status: 'Active' },
-        { id: 'CC-0287', name: 'Change management approval', status: 'Failed' },  // Gap 1
-        { id: 'CC-0400', name: 'Cyber crisis management plan', status: 'Failed' },  // Gap 2
-        { id: 'CC-0401', name: 'External stakeholder communication', status: 'Failed' },  // Gap 3
-        // ... 78 more controls that map to RBI CSF (total 85)
+        { id: 'CC-0287', name: 'Change management approval', status: 'Failed' },
+        { id: 'CC-0400', name: 'Cyber crisis management plan', status: 'Failed' },
+        { id: 'CC-0401', name: 'External stakeholder communication', status: 'Failed' },
       ],
-      // Unmatched: RBI CSF requirements with no existing control mapping
-      // These will be auto-created as new controls in unified library
       unmatched: [
         { ref: 'RBI-CSF-8.5', desc: 'Secure deletion of sensitive data with documented procedures', unifiedId: 'CC-0594' },
         { ref: 'RBI-CSF-9.2', desc: 'Third-party cyber risk assessment framework', unifiedId: 'CC-0595' },
@@ -224,14 +213,13 @@ const DATA = {
       title: 'PCI-DSS v4.0.1 Section 6 Update', 
       issuer: 'PCI SSC', 
       date: '01 Mar 2025', 
-      impactedControls: 45,  // 45 unique controls map to PCI-DSS (out of 200 total)
-      gaps: 0,               // All 45 controls are Active or Under Review
+      impactedControls: 45,
+      gaps: 0,
       status: 'Remediated', 
       severity: 'medium',
       impactedIds: [
         { id: 'CC-0089', name: 'Privileged access logging', status: 'Active' },
         { id: 'CC-0203', name: 'Encryption at rest', status: 'Active' },
-        // ... 43 more controls
       ],
       unmatched: []
     },
@@ -240,14 +228,13 @@ const DATA = {
       title: 'ISO 27001:2022 Annex A Update', 
       issuer: 'ISO', 
       date: '15 Jan 2025', 
-      impactedControls: 120,  // 120 unique controls map to ISO 27001 (out of 200 total)
-      gaps: 0,                // All 120 controls are Active or Under Review
+      impactedControls: 120,
+      gaps: 0,
       status: 'Remediated', 
       severity: 'low',
       impactedIds: [
         { id: 'CC-0041', name: 'User access review', status: 'Active' },
         { id: 'CC-0345', name: 'Data retention policy', status: 'Active' },
-        // ... 118 more controls
       ],
       unmatched: []
     },
