@@ -49,50 +49,72 @@ export default function Login({ onLoginSuccess }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#2e2e38',
+      background: '#0A0A0C',
+      backgroundImage: 'radial-gradient(circle at 50% 10%, rgba(201, 168, 76, 0.08) 0%, transparent 60%)',
       fontFamily: 'var(--font)'
     }}>
-      <div className="login-container" style={{
-        background: 'var(--bg-primary)',
+      <div className="card" style={{
         borderRadius: '16px',
-        boxShadow: '0 20px 60px rgba(0, 0, 0, 0.3)',
         width: '100%',
-        maxWidth: '420px',
+        maxWidth: '440px',
         padding: '48px 40px',
-        margin: '20px'
+        margin: '20px',
+        background: 'rgba(18, 18, 23, 0.7)',
+        backdropFilter: 'blur(16px)',
+        border: '1px solid rgba(201, 168, 76, 0.15)',
+        boxShadow: '0 24px 64px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
       }}>
-        <div className="login-header" style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <div className="login-logo" style={{ fontSize: '48px', marginBottom: '16px' }}>🔐</div>
-          <div className="login-title" style={{ fontSize: '28px', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '8px' }}>
+        <div className="login-header" style={{ textAlign: 'center', marginBottom: '36px' }}>
+          <div className="login-logo" style={{
+            fontSize: '36px',
+            marginBottom: '16px',
+            filter: 'drop-shadow(0 0 12px var(--accent-gold-glow))',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '64px',
+            height: '64px',
+            borderRadius: '14px',
+            background: 'rgba(201, 168, 76, 0.1)',
+            border: '1px solid var(--border-gold)',
+            color: 'var(--accent-gold-lt)'
+          }}>
+            🛡️
+          </div>
+          <div className="login-title" style={{
+            fontFamily: 'var(--font-heading)',
+            fontSize: '24px',
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            letterSpacing: '0.02em',
+            marginBottom: '8px'
+          }}>
             {isSignUpMode ? 'Create Account' : 'Welcome Back'}
           </div>
-          <div className="login-subtitle" style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+          <div className="login-subtitle" style={{ fontSize: '11px', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
             Unified Control Intelligence Layer
           </div>
         </div>
 
         {errorMsg && (
-          <div className="error-message show" style={{
-            background: 'var(--bg-danger)',
-            border: '1px solid var(--border-danger)',
-            color: 'var(--text-danger)',
+          <div className="banner banner-danger" style={{
             padding: '12px 16px',
             borderRadius: '8px',
             fontSize: '13px',
-            marginBottom: '20px'
+            marginBottom: '20px',
+            borderLeft: '3px solid var(--text-danger)'
           }}>
-            {errorMsg}
+            <div className="banner-body">{errorMsg}</div>
           </div>
         )}
 
         <form onSubmit={handleLoginSubmit}>
           {isSignUpMode && (
             <>
-              <div className="form-group" style={{ marginBottom: '24px' }}>
-                <label className="form-label" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Full Name</label>
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Full Name</label>
                 <input
                   type="text"
-                  className="form-input"
                   placeholder="First Last"
                   required
                   value={fullName}
@@ -100,18 +122,22 @@ export default function Login({ onLoginSuccess }) {
                   style={{
                     width: '100%',
                     padding: '12px 16px',
-                    fontSize: '14px',
+                    fontSize: '13px',
                     border: '1.5px solid var(--border-s)',
                     borderRadius: '8px',
                     background: 'var(--bg-secondary)',
                     color: 'var(--text-primary)',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    transition: 'all 0.2s'
                   }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--accent-gold)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border-s)'}
                 />
               </div>
 
-              <div className="form-group" style={{ marginBottom: '24px' }}>
-                <label className="form-label" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>User Role</label>
+              <div className="form-group" style={{ marginBottom: '20px' }}>
+                <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>User Role</label>
                 <select
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
@@ -123,7 +149,9 @@ export default function Login({ onLoginSuccess }) {
                     borderRadius: '8px',
                     width: '100%',
                     boxSizing: 'border-box',
-                    padding: '0 16px'
+                    padding: '0 16px',
+                    fontSize: '13px',
+                    outline: 'none'
                   }}
                 >
                   <option value="Compliance Lead">Compliance Lead</option>
@@ -136,11 +164,10 @@ export default function Login({ onLoginSuccess }) {
             </>
           )}
 
-          <div className="form-group" style={{ marginBottom: '24px' }}>
-            <label className="form-label" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Email Address</label>
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Email Address</label>
             <input
               type="email"
-              className="form-input"
               placeholder="you@company.com"
               required
               value={email}
@@ -148,21 +175,24 @@ export default function Login({ onLoginSuccess }) {
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                fontSize: '14px',
+                fontSize: '13px',
                 border: '1.5px solid var(--border-s)',
                 borderRadius: '8px',
                 background: 'var(--bg-secondary)',
                 color: 'var(--text-primary)',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                outline: 'none',
+                transition: 'all 0.2s'
               }}
+              onFocus={(e) => e.target.style.borderColor = 'var(--accent-gold)'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border-s)'}
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: '24px' }}>
-            <label className="form-label" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>Password</label>
+          <div className="form-group" style={{ marginBottom: '20px' }}>
+            <label className="form-label" style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>Password</label>
             <input
               type="password"
-              className="form-input"
               placeholder="Enter your password"
               required
               value={password}
@@ -170,56 +200,56 @@ export default function Login({ onLoginSuccess }) {
               style={{
                 width: '100%',
                 padding: '12px 16px',
-                fontSize: '14px',
+                fontSize: '13px',
                 border: '1.5px solid var(--border-s)',
                 borderRadius: '8px',
                 background: 'var(--bg-secondary)',
                 color: 'var(--text-primary)',
-                boxSizing: 'border-box'
+                boxSizing: 'border-box',
+                outline: 'none',
+                transition: 'all 0.2s'
               }}
+              onFocus={(e) => e.target.style.borderColor = 'var(--accent-gold)'}
+              onBlur={(e) => e.target.style.borderColor = 'var(--border-s)'}
             />
           </div>
 
           {!isSignUpMode && (
-            <div className="remember-forgot" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', fontSize: '13px' }}>
-              <label className="remember-me" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
-                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ width: '16px', height: '16px', cursor: 'pointer' }} />
+            <div className="remember-forgot" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px', fontSize: '12px' }}>
+              <label className="remember-me" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} style={{ width: '15px', height: '15px', cursor: 'pointer', accentColor: 'var(--accent-gold)' }} />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="forgot-password" style={{ color: '#ffe600', textDecoration: 'none', fontWeight: 500 }}>Forgot password?</a>
+              <a href="#" className="forgot-password" style={{ color: 'var(--accent-gold-lt)', fontWeight: 600 }}>Forgot password?</a>
             </div>
           )}
 
           <button
             type="submit"
-            className="btn-login"
+            className="btn btn-primary"
             disabled={loading}
             style={{
               width: '100%',
               padding: '14px',
-              fontSize: '15px',
-              fontWeight: 600,
-              color: '#2e2e38',
-              background: '#ffe600',
-              border: 'none',
+              fontSize: '14px',
+              fontWeight: '700',
               borderRadius: '8px',
               cursor: 'pointer',
-              marginTop: '8px'
+              marginTop: '8px',
+              height: '48px',
+              fontFamily: 'var(--font)'
             }}
           >
             {loading ? (
-              <>
-                <span className="loading-spinner"></span>
-                {isSignUpMode ? 'Creating account...' : 'Signing in...'}
-              </>
+              isSignUpMode ? 'Creating account...' : 'Signing in...'
             ) : (
-              isSignUpMode ? 'Sign Up' : 'Sign In'
+              isSignUpMode ? 'Create Account' : 'Sign In'
             )}
           </button>
 
-          <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '13px', color: 'var(--text-secondary)' }}>
+          <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '13px', color: 'var(--text-secondary)' }}>
             {isSignUpMode ? 'Already have an account? ' : "Don't have an account? "}
-            <a href="#" onClick={toggleMode} style={{ color: '#ffe600', textDecoration: 'none', fontWeight: 600 }}>
+            <a href="#" onClick={toggleMode} style={{ color: 'var(--accent-gold-lt)', fontWeight: 700 }}>
               {isSignUpMode ? 'Sign In' : 'Create one'}
             </a>
           </div>

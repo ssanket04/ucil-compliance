@@ -38,7 +38,7 @@ export default function Gaps() {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '20px', color: 'var(--text-secondary)' }}>Loading gaps...</div>;
+    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading gaps...</div>;
   }
 
   const counts = {
@@ -73,53 +73,59 @@ export default function Gaps() {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: '10px', marginBottom: '14px' }}>
-        <MetricCard label="Total gaps" value={counts.all} delta="= Dashboard Gaps = Library Failed" deltaType="bad" />
-        <MetricCard label="Critical" value={counts.critical} delta="Immediate action required" deltaType="bad" />
-        <MetricCard label="High" value={counts.high} delta="Action required" deltaType="warn" />
-        <MetricCard label="Medium" value={counts.medium} delta="Planned remediation" deltaType="info" />
-        <MetricCard label="Low" value={counts.low} delta="Monitor" deltaType="good" />
+      {/* Gaps Stats Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '20px' }}>
+        <MetricCard label="Total Gaps Flagged" value={counts.all} delta="Unified Library failures" deltaType="bad" />
+        <MetricCard label="Critical Severity" value={counts.critical} delta="CISO review required" deltaType="bad" />
+        <MetricCard label="High Severity" value={counts.high} delta="Immediate action needed" deltaType="warn" />
+        <MetricCard label="Medium Severity" value={counts.medium} delta="Planned remediation" deltaType="info" />
+        <MetricCard label="Low Severity" value={counts.low} delta="Regular monitoring" deltaType="good" />
       </div>
 
+      {/* Main Gaps List Card */}
       <div className="card">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
-          <div className="pill-bar" style={{ marginBottom: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+          {/* Severity Filters */}
+          <div className="pill-bar" style={{ marginBottom: 0 }}>
             <button className={`pill ${filter === 'all' ? 'active' : ''}`} onClick={() => setFilter('all')}>All ({counts.all})</button>
             <button className={`pill ${filter === 'critical' ? 'active-red' : ''}`} onClick={() => setFilter('critical')}>Critical ({counts.critical})</button>
             <button className={`pill ${filter === 'high' ? 'active-amber' : ''}`} onClick={() => setFilter('high')}>High ({counts.high})</button>
             <button className={`pill ${filter === 'medium' ? 'active-blue' : ''}`} onClick={() => setFilter('medium')}>Medium ({counts.medium})</button>
             <button className={`pill ${filter === 'low' ? 'active-green' : ''}`} onClick={() => setFilter('low')}>Low ({counts.low})</button>
           </div>
+          
+          {/* AI Remediation Action */}
           <button className="btn btn-primary" onClick={handleGeneratePlan} disabled={generatingPlan}>
-            {generatingPlan ? '🤖 AI working…' : '🤖 Generate Remediation Plan'}
+            {generatingPlan ? '🤖 Orchestrating plan...' : '🤖 Generate AI Remediation Plan'}
           </button>
         </div>
 
-        {errorMsg && <div className="banner banner-danger" style={{ marginBottom: '12px' }}>{errorMsg}</div>}
+        {errorMsg && <div className="banner banner-danger" style={{ marginBottom: '16px' }}>{errorMsg}</div>}
 
-        <div id="gap-list">
+        {/* Gaps List */}
+        <div id="gap-list" style={{ display: 'flex', flexDirection: 'column' }}>
           {filteredGaps.map((g) => {
             const isExpanded = expandedGaps[g.id];
-            const borderColor = g.sev === 'critical' ? 'var(--border-danger)'
-              : g.sev === 'high' ? 'var(--border-warning)'
-              : g.sev === 'medium' ? 'var(--border-info)' : 'var(--border-success)';
+            const borderColor = g.sev === 'critical' ? 'var(--text-danger)'
+              : g.sev === 'high' ? 'var(--text-warning)'
+              : g.sev === 'medium' ? 'var(--text-info)' : 'var(--text-success)';
 
             return (
-              <div key={g.id} data-sev={g.sev}>
-                <div className="gap-row" onClick={() => toggleGapExpand(g.id)}>
+              <div key={g.id} data-sev={g.sev} style={{ borderBottom: '1px solid var(--border-t)' }}>
+                <div className="gap-row" onClick={() => toggleGapExpand(g.id)} style={{ borderLeft: isExpanded ? `3px solid ${borderColor}` : '', paddingLeft: isExpanded ? '12px' : '6px' }}>
                   <div className="gap-id">{g.id}</div>
                   <div className="gap-desc">{g.desc}</div>
-                  <Badge text={g.sev.charAt(0).toUpperCase() + g.sev.slice(1)} color={sevColor[g.sev]} />
-                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: '6px' }}>
+                  <Badge text={g.sev.toUpperCase()} color={sevColor[g.sev]} />
+                  <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: '12px' }}>
                     {isExpanded ? '▼' : '▶'}
                   </span>
                 </div>
                 {isExpanded && (
-                  <div className="gap-expand" style={{ borderLeftColor: borderColor, borderLeftWidth: '3px', borderLeftStyle: 'solid' }}>
-                    <div style={{ marginBottom: '8px' }}><strong>Why {g.sev}:</strong> {g.why}</div>
-                    <div style={{ marginBottom: '8px' }}><strong>Impact if not resolved:</strong> {g.impact}</div>
-                    <div style={{ marginBottom: '10px' }}><strong>Benefit if resolved:</strong> {g.benefit}</div>
-                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                  <div className="gap-expand" style={{ borderLeftColor: borderColor }}>
+                    <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Why marked {g.sev}:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.why}</span></div>
+                    <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Business Impact if unresolved:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.impact}</span></div>
+                    <div style={{ marginBottom: '12px' }}><strong style={{ color: 'var(--text-primary)' }}>Resolution Benefit:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.benefit}</span></div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                       {g.category.map((c, i) => <Badge key={i} text={c} color="gray" />)}
                     </div>
                   </div>
@@ -130,26 +136,36 @@ export default function Gaps() {
         </div>
       </div>
 
+      {/* Remediation Output */}
       {remediationPlan && (
-        <div id="remediation-output" style={{ marginTop: '16px' }}>
-          <div className="card">
-            <div className="card-title">AI Remediation Plan</div>
-            <div style={{ fontSize: '12px', lineHeight: 1.7, color: 'var(--text-secondary)', marginBottom: '12px' }}>
+        <div id="remediation-output" style={{ marginTop: '20px' }}>
+          <div className="card" style={{ border: '1px solid var(--border-success)', background: 'rgba(46, 204, 113, 0.02)' }}>
+            <div className="card-title" style={{ color: 'var(--text-success)' }}>AI Generated Remediation Strategy</div>
+            <div style={{ fontSize: '13px', lineHeight: 1.7, color: 'var(--text-secondary)', marginBottom: '16px' }}>
               {remediationPlan.executive_summary}
             </div>
-            {remediationPlan.plan.map((p, idx) => (
-              <div key={idx} style={{ border: '0.5px solid var(--border-t)', borderRadius: 'var(--r-md)', padding: '12px', marginBottom: '8px' }}>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '6px' }}>
-                  <strong style={{ fontFamily: 'monospace', fontSize: '11px' }}>{p.gap_code}</strong>
-                  <Badge text={p.severity.charAt(0).toUpperCase() + p.severity.slice(1)} color={p.severity === 'critical' ? 'red' : p.severity === 'high' ? 'amber' : 'blue'} />
-                  <span style={{ fontSize: '10px', color: 'var(--text-secondary)', marginLeft: 'auto' }}>{p.recommended_deadline}</span>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+              {remediationPlan.plan.map((p, idx) => (
+                <div key={idx} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)', padding: '14px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '10px' }}>
+                    <strong style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--accent-gold-lt)' }}>{p.gap_code}</strong>
+                    <Badge text={p.severity.toUpperCase()} color={p.severity === 'critical' ? 'red' : p.severity === 'high' ? 'amber' : 'blue'} />
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: 'auto' }}>Target: {p.recommended_deadline}</span>
+                  </div>
+                  <div style={{ fontSize: '12.5px', marginBottom: '10px', color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                    {p.recommended_action}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-secondary)', borderTop: '1px solid var(--border-t)', paddingTop: '8px' }}>
+                    Suggested Owner: <strong>{p.suggested_owner}</strong> &nbsp;·&nbsp; Estimated Effort: <strong>{p.estimated_effort}</strong>
+                  </div>
                 </div>
-                <div style={{ fontSize: '12px', marginBottom: '4px' }}>{p.recommended_action}</div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>Owner: {p.suggested_owner} · Effort: {p.estimated_effort}</div>
-              </div>
-            ))}
-            <div style={{ fontSize: '11px', color: 'var(--text-success)', marginTop: '8px' }}>
-              Total effort: {remediationPlan.total_effort_estimate}
+              ))}
+            </div>
+
+            <div style={{ fontSize: '12px', color: 'var(--text-success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>✓ Total estimated resolution effort:</span>
+              <span style={{ color: 'var(--accent-gold-lt)' }}>{remediationPlan.total_effort_estimate}</span>
             </div>
           </div>
         </div>

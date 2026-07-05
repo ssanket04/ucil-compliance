@@ -103,7 +103,7 @@ export default function Dashboard({ onNavigate }) {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '20px', color: 'var(--text-secondary)' }}>Loading dashboard...</div>;
+    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Executive Dashboard...</div>;
   }
 
   const m = metrics || DATA.metrics;
@@ -118,7 +118,7 @@ export default function Dashboard({ onNavigate }) {
 
   const autoApprovalDisplay = m.aiAutoApprovalRate ? `${Math.round(m.aiAutoApprovalRate)}%` : '0%';
   const autoApprovalSub = m.uniqueCanonical > 0
-    ? `${Math.round(m.aiAutoApprovalRate * m.uniqueCanonical / 100)} of ${m.uniqueCanonical} controls auto-approved`
+    ? `${Math.round(m.aiAutoApprovalRate * m.uniqueCanonical / 100)} of ${m.uniqueCanonical} auto-approved`
     : 'Confidence ≥ 0.85';
 
   const multiplierDisplay = m.controlMultiplier ? `1 → ${Number(m.controlMultiplier).toFixed(1)}×` : '1 → 5.2×';
@@ -126,78 +126,96 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <>
-      <div className="grid-4">
-        <MetricCard label="Unique canonical controls" value={m.uniqueCanonical} delta="Total controls = Unified Library = Domain Head View" deltaType="good" onClick={() => onNavigate('library')} />
-        <MetricCard label="Implemented controls" value={m.implemented} delta={`${implementedPct}% · Active in Library · Approved in Evidence`} deltaType="good" onClick={() => onNavigate('library')} />
-        <div className="metric-card" onClick={() => setShowInProgressBreakdown(!showInProgressBreakdown)} style={{ cursor: 'pointer' }}>
-          <div className="metric-label">In Progress <span style={{ fontSize: '10px', opacity: 0.7 }}>(click for breakdown)</span></div>
-          <div className="metric-value">{totalInProgress}</div>
-          <div className="metric-delta text-warning">= Evidence (Under Review + Reassigned + Pending) + SME</div>
-          {showInProgressBreakdown && (
-            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '0.5px solid var(--border-t)' }}>
-              <div style={{ fontSize: '11px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onNavigate('queue'); }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Pending SME review</span>
-                <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.pendingSME}</strong>
+      {/* Bento Grid Top Level Row */}
+      <div className="bento-grid">
+        {/* Row 1 Metrics Column */}
+        <div className="col-8" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+          <MetricCard label="Unique Canonical Controls" value={m.uniqueCanonical} delta="Matches Library & Domain Head" deltaType="good" onClick={() => onNavigate('library')} />
+          <MetricCard label="Implemented Controls" value={m.implemented} delta={`${implementedPct}% compliance coverage`} deltaType="good" onClick={() => onNavigate('library')} />
+          
+          <div className="metric-card" onClick={() => setShowInProgressBreakdown(!showInProgressBreakdown)} style={{ cursor: 'pointer' }}>
+            <div className="metric-label">In Progress <span style={{ fontSize: '9px', color: 'var(--accent-gold-lt)' }}>(Click to expand)</span></div>
+            <div className="metric-value">{totalInProgress}</div>
+            <div className="metric-delta text-warning">Pending Review / SME</div>
+            {showInProgressBreakdown && (
+              <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--border-t)' }} onClick={(e) => e.stopPropagation()}>
+                <div style={{ fontSize: '11px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => onNavigate('queue')}>
+                  <span style={{ color: 'var(--text-secondary)' }}>SME queue</span>
+                  <strong style={{ color: 'var(--accent-gold-lt)' }}>{m.inProgress.pendingSME}</strong>
+                </div>
+                <div style={{ fontSize: '11px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => onNavigate('evidence')}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Under review</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidenceUnderReview}</strong>
+                </div>
+                <div style={{ fontSize: '11px', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => onNavigate('evidence')}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Reassigned</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidenceReassigned}</strong>
+                </div>
+                <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => onNavigate('evidence')}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Pending evidence</span>
+                  <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidencePending}</strong>
+                </div>
               </div>
-              <div style={{ fontSize: '11px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onNavigate('evidence'); }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Evidence under review</span>
-                <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidenceUnderReview}</strong>
-              </div>
-              <div style={{ fontSize: '11px', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onNavigate('evidence'); }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Evidence reassigned</span>
-                <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidenceReassigned}</strong>
-              </div>
-              <div style={{ fontSize: '11px', display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); onNavigate('evidence'); }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Evidence pending</span>
-                <strong style={{ color: 'var(--text-primary)' }}>{m.inProgress.evidencePending}</strong>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <MetricCard label="Open Gaps" value={m.openGaps} delta={`${m.criticalGaps} critical gaps require remediation`} deltaType="bad" onClick={() => onNavigate('gaps')} />
         </div>
-        <MetricCard label="Open gaps" value={m.openGaps} delta={`${m.criticalGaps} critical · Failed in Library · Rejected in Evidence`} deltaType="bad" onClick={() => onNavigate('gaps')} />
+
+        {/* Row 1 Activity Column */}
+        <div className="col-4">
+          <div className="card" style={{ height: '100%', marginBottom: 0 }}>
+            <div className="card-title">SecOps Audit Trail</div>
+            <ActivityFeed items={activity} />
+          </div>
+        </div>
       </div>
 
-      <div className="grid-4">
-        <MetricCard label="Total sources ingested" value={m.totalSourcesIngested} delta={`${m.frameworksIngested} frameworks · ${m.circularsIngested} circulars · ${m.internalPolicies} policies`} deltaType="good" onClick={() => onNavigate('ingest')} />
-        <MetricCard label="Control Efficiency" value={multiplierDisplay} delta="One control satisfies multiple frameworks" deltaType="good" onClick={() => onNavigate('library')} />
-        <MetricCard label="AI Auto-Approval Rate" value={autoApprovalDisplay} delta={`${autoApprovalSub} · Matches Library auto-approved`} deltaType="good" onClick={() => onNavigate('library')} />
-        <MetricCard label="Web Scraper Status" value="Active" delta={`Last scan: ${lastScanTime}`} deltaType="good" onClick={() => onNavigate('ingest')} />
-      </div>
-
-      <div className="row">
-        <div className="col-14">
-          <div className="card">
-            <div className="card-title">Framework compliance status</div>
-            <div style={{ maxHeight: '700px', overflowY: 'auto', overflowX: 'hidden' }}>
+      {/* Bento Grid Row 2 */}
+      <div className="bento-grid">
+        <div className="col-8">
+          <div className="card" style={{ height: '100%', marginBottom: 0 }}>
+            <div className="card-title">Framework Compliance Status</div>
+            <div style={{ maxHeight: '380px', overflowY: 'auto', paddingRight: '4px' }}>
               {frameworks.map((fw, idx) => (
                 <FrameworkBar key={idx} name={fw.name} satisfied={fw.satisfied} partial={fw.partial} missing={fw.missing} status={fw.status} />
               ))}
             </div>
           </div>
         </div>
-        <div className="col">
-          <div className="card" style={{ height: '100%' }}>
-            <div className="card-title">Recent activity</div>
-            <ActivityFeed items={activity} />
-          </div>
+
+        <div className="col-4" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <MetricCard label="Total Ingested Sources" value={m.totalSourcesIngested} delta={`${m.frameworksIngested} frameworks · ${m.circularsIngested} circulars`} deltaType="good" onClick={() => onNavigate('ingest')} />
+          <MetricCard label="Control Efficiency" value={multiplierDisplay} delta="One control satisfies multiple regulations" deltaType="good" onClick={() => onNavigate('library')} />
         </div>
       </div>
 
-      <div className="row">
-        <div className="col">
-          <div className="card" style={{ height: '100%' }}>
-            <div className="card-title" style={{ cursor: 'pointer' }} onClick={() => onNavigate('regulatory')}>
-              Recent regulatory updates <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 400 }}>→ view all</span>
+      {/* Bento Grid Row 3 */}
+      <div className="bento-grid">
+        <div className="col-4">
+          <MetricCard label="AI Auto-Approval Rate" value={autoApprovalDisplay} delta={autoApprovalSub} deltaType="good" onClick={() => onNavigate('library')} />
+        </div>
+        <div className="col-4">
+          <MetricCard label="Live Circular Scraper" value="Active" delta={`Last scan: ${lastScanTime}`} deltaType="good" onClick={() => onNavigate('ingest')} />
+        </div>
+
+        <div className="col-4">
+          <div className="card" style={{ height: '100%', marginBottom: 0, padding: '16px 20px' }}>
+            <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', marginBottom: '8px' }} onClick={() => onNavigate('regulatory')}>
+              <span>Regulatory Changes</span>
+              <span style={{ fontSize: '11px', color: 'var(--text-info)', fontWeight: 'normal' }}>View all →</span>
             </div>
-            <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
-              {regulatory.slice(0, 3).map((r, idx) => (
-                <div className="reg-update-item" key={idx}>
-                  <div className="reg-update-date">{r.date.split(' ').slice(0, 2).join(' ')}</div>
+            <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
+              {regulatory.slice(0, 2).map((r, idx) => (
+                <div className="reg-update-item" key={idx} style={{ padding: '8px 0' }}>
+                  <div className="reg-update-date" style={{ width: '50px' }}>{r.date.split(' ').slice(0, 2).join(' ')}</div>
                   <div className="reg-update-body">
-                    <div className="reg-update-title">{r.id}</div>
-                    <div className="reg-update-meta">{r.title} · Affects {r.impactedControls} controls{r.gaps > 0 ? ` · ${r.gaps} gaps` : ''}</div>
+                    <div className="reg-update-title" style={{ fontSize: '11.5px', fontWeight: 'bold' }}>{r.id}</div>
+                    <div className="reg-update-meta" style={{ fontSize: '10px' }}>Affects {r.impactedControls} controls</div>
                   </div>
-                  <div><Badge text={r.status === 'Remediated' ? 'Remediated' : 'In review'} color={r.status === 'Remediated' ? 'green' : 'red'} /></div>
+                  <div>
+                    <Badge text={r.status === 'Remediated' ? 'Done' : 'Review'} color={r.status === 'Remediated' ? 'green' : 'red'} />
+                  </div>
                 </div>
               ))}
             </div>

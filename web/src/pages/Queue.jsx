@@ -12,6 +12,14 @@ export default function Queue({ onQueueCountChange }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
+  // Keep track of current time for countdown calculation
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000); // update every minute
+    return () => clearInterval(timer);
+  }, []);
+
   useEffect(() => {
     async function loadQueue() {
       try {
@@ -29,6 +37,7 @@ export default function Queue({ onQueueCountChange }) {
           frameworks:    [{ label: item.frameworks?.name || 'Framework', color: 'blue' }],
           conflict:      null,
           conflictDetail: null,
+          expiresAt:     item.expires_at,
         })) : DATA.queue.map(item => ({
           id:            item.id,
           dbId:          null,
@@ -41,6 +50,7 @@ export default function Queue({ onQueueCountChange }) {
           frameworks:    item.frameworks || [],
           conflict:      item.conflict,
           conflictDetail: item.conflictDetail,
+          expiresAt:     item.expiresAt || new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
         }));
 
         setQueue(mappedQueue);
@@ -57,7 +67,7 @@ export default function Queue({ onQueueCountChange }) {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '20px', color: 'var(--text-secondary)' }}>Loading SME Review Queue...</div>;
+    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading SME Review Queue...</div>;
   }
 
   const toggleItem = (id) => {
@@ -121,76 +131,118 @@ export default function Queue({ onQueueCountChange }) {
     dismissItem(displayId);
   };
 
+  const formatCountdown = (expiresAt) => {
+    if (!expiresAt) return null;
+    const expDate = new Date(expiresAt);
+    const diffMs = expDate - now;
+    if (diffMs <= 0) return 'Expired';
+    const hours = Math.floor(diffMs / 1000 / 60 / 60);
+    const mins = Math.floor((diffMs / 1000 / 60) % 60);
+    return `${hours}h ${mins}m left`;
+  };
+
   return (
     <>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', alignItems: 'center' }}>
-        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-          {queue.length} items pending SME review (confidence 0.65–0.84)
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center' }}>
+        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          {queue.length} mappings pending SME verification (AI confidence matches 0.50–0.84)
         </span>
       </div>
 
-      {errorMsg && <div className="banner banner-danger" style={{ marginBottom: '12px' }}>{errorMsg}</div>}
-      {successMsg && <div className="banner banner-success" style={{ marginBottom: '12px' }}>{successMsg}</div>}
+      {errorMsg && <div className="banner banner-danger" style={{ marginBottom: '16px' }}>{errorMsg}</div>}
+      {successMsg && <div className="banner banner-success" style={{ marginBottom: '16px' }}>{successMsg}</div>}
 
-      <div id="queue-list">
+      <div id="queue-list" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {queue.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)', fontSize: '13px' }}>
-            All mappings reviewed. Queue is empty. ✓
+          <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>✓</div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>All mappings verified. Review queue is empty.</div>
           </div>
         ) : (
           queue.map((item) => {
             const isExpanded = expandedItems[item.id];
             const justification = justifications[item.id] || '';
+            const timeRemaining = formatCountdown(item.expiresAt);
 
             return (
-              <div className="queue-item" id={`qi-${item.id}`} key={item.id}>
-                <div className="queue-header" onClick={() => toggleItem(item.id)} style={{ cursor: 'pointer' }}>
+              <div className="queue-item" id={`qi-${item.id}`} key={item.id} style={{ borderLeft: item.conflict ? '3px solid var(--border-danger)' : '' }}>
+                <div className="queue-header" onClick={() => toggleItem(item.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
                   <div className="queue-id">{item.id}</div>
+                  
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '2px' }}>
-                      Unique Control Formed
+                    <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
+                      Target Canonical Control
                     </div>
-                    <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: '13.5px', fontWeight: 600, color: 'var(--text-primary)' }}>
                       {item.uniqueControl}
                     </div>
                   </div>
-                  <ConfPill value={item.conf} />
-                  {item.conflict && (
-                    <button className="btn-sm" style={{ borderColor: 'var(--border-danger)', color: 'var(--text-danger)', marginLeft: '8px' }} onClick={(e) => { e.stopPropagation(); toggleItem(item.id); }}>
-                      ⚠ Conflict
-                    </button>
-                  )}
-                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '8px' }}>
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <ConfPill value={item.conf} />
+                    
+                    {timeRemaining && (
+                      <span className="badge badge-amber" style={{ fontFamily: 'var(--font-mono)', fontSize: '10px' }}>
+                        ⏱ {timeRemaining}
+                      </span>
+                    )}
+
+                    {item.conflict && (
+                      <Badge text="Conflict" color="red" />
+                    )}
+
+                    <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginLeft: '4px' }}>
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
+                  </div>
                 </div>
+
                 {isExpanded && (
-                  <div style={{ paddingTop: '10px' }}>
-                    <div style={{ background: 'var(--bg-secondary)', borderRadius: 'var(--r-md)', padding: '10px', marginBottom: '10px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                        Mapping Details
-                      </div>
-                      <div style={{ marginBottom: '8px', paddingBottom: '8px', borderBottom: '0.5px solid var(--border-t)' }}>
-                        <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-info)', marginBottom: '3px' }}>
-                          {item.frameworkName} — {item.clauseRef}
+                  <div style={{ paddingTop: '16px', borderTop: '1px solid var(--border-t)', marginTop: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '16px', marginBottom: '14px' }}>
+                      
+                      {/* Left Column: Details */}
+                      <div>
+                        <div style={{ background: 'rgba(255, 255, 255, 0.01)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)', padding: '14px' }}>
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                            Source Requirement
+                          </div>
+                          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-info)', marginBottom: '4px' }}>
+                            {item.frameworkName} — Clause {item.clauseRef}
+                          </div>
+                          <div style={{ fontSize: '12px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                            {item.aiRationale}
+                          </div>
                         </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                          {item.aiRationale}
+                      </div>
+
+                      {/* Right Column: Meta & Actions */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {item.conflictDetail && (
+                          <div style={{ background: 'rgba(239, 68, 68, 0.04)', border: '1px solid var(--border-danger)', borderRadius: 'var(--r-md)', padding: '12px', fontSize: '11.5px', color: 'var(--text-danger)' }}>
+                            <strong>Conflict:</strong> {item.conflictDetail.issue}
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '6px' }}>Framework Tag</div>
+                          <div className="queue-meta" style={{ margin: 0 }}>
+                            {item.frameworks.map((f, idx) => (
+                              <Badge key={idx} text={f.label} color={f.color} />
+                            ))}
+                          </div>
                         </div>
                       </div>
+
                     </div>
-                    <div className="queue-meta">
-                      {item.frameworks.map((f, idx) => (
-                        <Badge key={idx} text={f.label} color={f.color} />
-                      ))}
+
+                    <div style={{ marginBottom: '12px' }}>
+                      <textarea className="form-textarea" placeholder="Add justification or override details (Required for Reject)..." rows="2" value={justification} onChange={(e) => handleJustificationChange(item.id, e.target.value)} />
                     </div>
-                    <div style={{ marginBottom: '8px' }}>
-                      <textarea className="form-textarea" placeholder="Add SME justification or override note…" rows="2" value={justification} onChange={(e) => handleJustificationChange(item.id, e.target.value)} />
-                    </div>
+
                     <div className="queue-actions">
-                      <button className="btn-sm btn-success" onClick={() => handleApprove(item.dbId, item.id)}>✓ Approve</button>
-                      <button className="btn-sm btn-danger" onClick={() => handleReject(item.dbId, item.id)}>✗ Reject</button>
-                      <button className="btn-sm btn-info">✎ Edit Control</button>
+                      <button className="btn btn-sm btn-success" onClick={() => handleApprove(item.dbId, item.id)}>✓ Approve Mapping</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleReject(item.dbId, item.id)}>✗ Reject Mapping</button>
+                      <button className="btn btn-sm">✎ Edit Control</button>
                     </div>
                   </div>
                 )}

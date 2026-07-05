@@ -59,39 +59,41 @@ export default function Regulatory() {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '20px', color: 'var(--text-secondary)' }}>Loading regulatory updates...</div>;
+    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading regulatory updates...</div>;
   }
 
   const selected = changes.find(c => c.id === selectedId) || null;
 
   return (
     <>
+      {/* Regulatory Change Log Card */}
       <div className="card">
-        <div className="card-title">Regulatory change log</div>
+        <div className="card-title">Regulatory Change Log</div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
               <tr>
-                <th style={{ width: '40%' }}>Circular / Update</th>
-                <th style={{ width: '15%' }}>Issued</th>
-                <th style={{ width: '15%' }}>Impacted</th>
-                <th style={{ width: '30%' }}>Action</th>
+                <th style={{ width: '45%' }}>Circular ID & Title</th>
+                <th style={{ width: '15%' }}>Issued Date</th>
+                <th style={{ width: '20%' }}>Impacted Entities</th>
+                <th style={{ width: '20%' }}>Action</th>
               </tr>
             </thead>
             <tbody>
               {changes.map((r) => (
-                <tr key={r.id} className="clickable" onClick={() => setSelectedId(r.id)} style={selectedId === r.id ? { background: 'var(--bg-secondary)' } : {}}>
+                <tr key={r.id} className="clickable" onClick={() => setSelectedId(r.id)} style={selectedId === r.id ? { background: 'rgba(255, 255, 255, 0.03)' } : {}}>
                   <td>
-                    <div style={{ fontSize: '12px', fontWeight: 600 }}>{r.id}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.title}</div>
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{r.id}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{r.title}</div>
                   </td>
                   <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.date}</td>
-                  <td style={{ fontSize: '12px', color: 'var(--text-primary)' }}>
-                    {r.impactedControls}{r.gaps > 0 ? ` · ${r.gaps} gaps` : ''}
+                  <td style={{ fontSize: '12px' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--accent-gold-lt)' }}>{r.impactedControls} controls</span>
+                    {r.gaps > 0 && <span style={{ color: 'var(--text-danger)', marginLeft: '6px' }}>({r.gaps} gaps)</span>}
                   </td>
                   <td>
-                    <button className="btn-sm btn-info" onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); }}>
-                      Details →
+                    <button className="btn btn-sm btn-info" onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); }}>
+                      View Impact Details
                     </button>
                   </td>
                 </tr>
@@ -101,44 +103,58 @@ export default function Regulatory() {
         </div>
       </div>
 
+      {/* Selected Circular Details */}
       {selected && (
-        <div id="regulatory-detail">
-          <div className="row">
-            <div className="col">
-              <div className="card">
-                <div className="card-title">Impacted controls</div>
-                <div className="card-subtitle">Controls affected by {selected.id} ({selected.impactedIds.length} total)</div>
-                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        <div id="regulatory-detail" style={{ animation: 'fadeIn 0.3s ease-out' }}>
+          <div className="bento-grid">
+            {/* Impacted Controls */}
+            <div className="col-6">
+              <div className="card" style={{ height: '100%', marginBottom: 0 }}>
+                <div className="card-title">Impacted Controls Inventory</div>
+                <div className="card-subtitle">Active controls affected by circular {selected.id} ({selected.impactedIds.length} controls)</div>
+                
+                <div style={{ maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
                   {selected.impactedIds.length ? (
-                    selected.impactedIds.map((c, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 0', borderBottom: '0.5px solid var(--border-t)' }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-secondary)' }}>{c.control_code}</div>
-                        <div style={{ fontSize: '12px', fontWeight: 500, flex: 1 }}>{c.name}</div>
-                        <StatusBadge status={c.status} />
-                      </div>
-                    ))
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {selected.impactedIds.map((c, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10.5px', color: 'var(--accent-gold-lt)', fontWeight: 'bold' }}>{c.control_code}</div>
+                          <div style={{ fontSize: '12px', fontWeight: 500, flex: 1, color: 'var(--text-primary)' }}>{c.name}</div>
+                          <StatusBadge status={c.status} />
+                        </div>
+                      ))}
+                    </div>
                   ) : (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '10px 0' }}>No impacted controls recorded yet.</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', padding: '20px 0', textAlign: 'center' }}>No active controls mapped to this update.</div>
                   )}
                 </div>
               </div>
             </div>
-            <div className="col">
-              <div className="card">
-                <div className="card-title">Unmatched controls</div>
-                <div className="card-subtitle">New requirements with no existing control mapping</div>
-                <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+
+            {/* Unmatched Clauses (Gaps) */}
+            <div className="col-6">
+              <div className="card" style={{ height: '100%', marginBottom: 0 }}>
+                <div className="card-title">Unmapped Circular Clauses</div>
+                <div className="card-subtitle">Clauses extracted from circular that have no matching controls</div>
+                
+                <div style={{ maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
                   {selected.unmatched.length ? (
-                    selected.unmatched.map((u, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '7px 0', borderBottom: '0.5px solid var(--border-t)' }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-secondary)' }}>{u.unifiedId || u.ref || '—'}</div>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-tertiary)' }}>{u.ref || ''}</div>
-                        <div style={{ fontSize: '12px', flex: 1 }}>{u.desc || u.description || '—'}</div>
-                        <Badge text="No mapping" color="red" />
-                      </div>
-                    ))
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {selected.unmatched.map((u, idx) => (
+                        <div key={idx} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', background: 'var(--bg-secondary)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)' }}>
+                          <div style={{ flexShrink: 0 }}>
+                            <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--text-secondary)', fontWeight: 'bold' }}>{u.unifiedId || u.ref || '—'}</div>
+                            {u.ref && <div style={{ fontFamily: 'var(--font-mono)', fontSize: '9px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{u.ref}</div>}
+                          </div>
+                          <div style={{ fontSize: '12px', flex: 1, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                            {u.desc || u.description || '—'}
+                          </div>
+                          <Badge text="No Mapping" color="red" />
+                        </div>
+                      ))}
+                    </div>
                   ) : (
-                    <div style={{ fontSize: '12px', color: 'var(--text-secondary)', padding: '10px 0' }}>No unmatched clauses recorded.</div>
+                    <div style={{ fontSize: '12px', color: 'var(--text-tertiary)', padding: '20px 0', textAlign: 'center' }}>No unmapped regulatory requirements found. All mapped.</div>
                   )}
                 </div>
               </div>

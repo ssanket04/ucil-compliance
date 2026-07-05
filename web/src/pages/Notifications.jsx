@@ -35,62 +35,88 @@ export default function Notifications({ onNavigate }) {
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '20px', color: 'var(--text-secondary)' }}>Loading notifications...</div>;
+    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading notifications...</div>;
   }
 
   return (
     <>
+      {/* Recent Notifications Feed Card */}
       <div className="card">
-        <div className="card-title">Recent notifications</div>
-        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+        <div className="card-title">Recent System Notifications</div>
+        <div style={{ maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
           {notifications.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-secondary)' }}>
-              No notifications yet.
+            <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-tertiary)' }}>
+              No recent notifications to display.
             </div>
           ) : (
-            notifications.map((n) => (
-              <div className="notif-item" key={n.id} style={{ display: 'flex', gap: '10px', padding: '10px 0', borderBottom: '0.5px solid var(--border-t)' }}>
-                <div className="notif-icon" style={{ fontSize: '18px', flexShrink: 0 }}>{n.icon}</div>
-                <div className="notif-body" style={{ flex: 1, minWidth: 0 }}>
-                  <div className="notif-title" style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>{n.title}</div>
-                  <div className="notif-sub" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: '1.4' }}>{n.sub}</div>
-                  <div className="notif-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                    <span className="notif-time" style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{n.time}</span>
-                    {n.unread && <div className="notif-unread" style={{ width: '7px', height: '7px', borderRadius: '50%', background: 'var(--text-info)', flexShrink: 0, marginTop: '3px' }}></div>}
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              {notifications.map((n) => (
+                <div className="notif-item" key={n.id} style={{
+                  display: 'flex',
+                  gap: '14px',
+                  padding: '14px 16px',
+                  borderBottom: '1px solid var(--border-t)',
+                  borderLeft: n.unread ? '3px solid var(--accent-gold)' : 'none',
+                  background: n.unread ? 'rgba(201, 168, 76, 0.02)' : 'transparent',
+                  borderRadius: 'var(--r-sm)',
+                  marginBottom: '4px',
+                  alignItems: 'center'
+                }}>
+                  <div className="notif-icon" style={{ fontSize: '20px', filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.15))' }}>{n.icon}</div>
+                  <div className="notif-body" style={{ flex: 1, minWidth: 0 }}>
+                    <div className="notif-title" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{n.title}</div>
+                    <div className="notif-sub" style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: '1.4' }}>{n.sub}</div>
+                    <div className="notif-footer" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                      <span className="notif-time" style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>{n.time}</span>
+                      {n.unread && <div className="notif-unread" style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--accent-gold)', boxShadow: '0 0 6px var(--accent-gold)' }}></div>}
+                    </div>
                   </div>
+                  {n.action && (
+                    <button className="btn btn-sm btn-info" onClick={() => onNavigate(n.action)}>
+                      Review Action
+                    </button>
+                  )}
                 </div>
-                {n.action && (
-                  <button className="btn-sm" onClick={() => onNavigate(n.action)}>View</button>
-                )}
-              </div>
-            ))
+              ))}
+            </div>
           )}
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-title">Notification triggers</div>
-        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>The following events generate automatic notifications to responsible parties.</div>
-        <table className="data-table">
-          <thead><tr><th>Trigger event</th><th>Notifies</th><th>Channel</th></tr></thead>
-          <tbody>
-            {[
-              ['Evidence uploaded',              'Domain Head',              'Email'],
-              ['Evidence approved',              'Control Owner',            'Email'],
-              ['Evidence rejected / returned',   'Control Owner',            'Email'],
-              ['Gap marked critical',            'Compliance Lead, CISO',    'Email'],
-              ['Regulatory update detected',     'Compliance Team',          'Email'],
-              ['Compliance conflict detected',   'CISO, Compliance Lead',    'Email'],
-              ['SME review pending > 48h',       'Compliance Lead',          'Email'],
-            ].map(([t,n,c], idx) => (
-              <tr key={idx}>
-                <td style={{ fontSize: '12px' }}>{t}</td>
-                <td><Badge text={n} color="blue" /></td>
-                <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{c}</td>
+      {/* Notification Triggers Configuration Card */}
+      <div className="card" style={{ marginTop: '16px' }}>
+        <div className="card-title">SecOps Notification Routing rules</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px', lineHeight: 1.5 }}>
+          Autonomous alerts dispatched to relevant roles in real time.
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>System Trigger Event</th>
+                <th>Target Recipient Role</th>
+                <th>Alert Dispatch Channel</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {[
+                ['Evidence document uploaded',              'Domain Head',              'Email + Slack notification'],
+                ['Evidence approved by Domain Head',       'Control Owner',            'Slack alert'],
+                ['Evidence rejected / returned to owner',   'Control Owner',            'Email escalation'],
+                ['Gap severity elevated to critical',       'Compliance Lead, CISO',    'Email + High priority Slack'],
+                ['Regulatory circular detected by scraper', 'Compliance Team',          'Email summary digest'],
+                ['Compliance conflict detected between frameworks', 'CISO, Compliance Lead', 'Email escalation + SecOps warning'],
+                ['SME verification pending review > 48h',  'Compliance Lead',          'Email remainder alert'],
+              ].map(([t,n,c], idx) => (
+                <tr key={idx}>
+                  <td style={{ fontSize: '12.5px', fontWeight: 500 }}>{t}</td>
+                  <td><Badge text={n} color="blue" /></td>
+                  <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{c}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </>
   );
