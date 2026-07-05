@@ -295,7 +295,12 @@ export default function Evidence({ controlId }) {
                       <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Files</div>
                       {ev.files.map((f, i) => (
                         <div className="ev-file-row" key={i}>
-                          <div className="ev-file-icon">{getIcon(f.name)}</div>
+                          <div className="ev-file-icon">
+                            {getIcon(f.name)}
+                            {f.sha256Hash && (
+                              <span style={{ fontSize: '10px', display: 'block', textAlign: 'center', marginTop: '2px', cursor: 'help' }} title="SHA-256 Integrity Verified">🛡️</span>
+                            )}
+                          </div>
                           <div className="ev-file-info">
                             <div className="ev-file-name">{f.name}</div>
                             <div className="ev-file-meta">

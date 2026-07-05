@@ -234,8 +234,45 @@ CREATE TABLE public.audit_log (
   new_values   JSONB,
   ip_address   TEXT,
   user_agent   TEXT,
+  prev_hash    TEXT,
+  current_hash TEXT,
   performed_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Chaining trigger for tamper-evident audit logs
+CREATE OR REPLACE FUNCTION public.chain_audit_log()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_prev_hash TEXT;
+  v_payload TEXT;
+BEGIN
+  SELECT current_hash INTO v_prev_hash
+  FROM public.audit_log
+  ORDER BY performed_at DESC, id DESC
+  LIMIT 1;
+
+  IF v_prev_hash IS NULL THEN
+    v_prev_hash := 'GENESIS';
+  END IF;
+
+  NEW.prev_hash := v_prev_hash;
+
+  v_payload := coalesce(NEW.performed_by::text, '') || '|' ||
+               coalesce(NEW.action, '') || '|' ||
+               coalesce(NEW.entity_type, '') || '|' ||
+               coalesce(NEW.entity_id::text, '') || '|' ||
+               coalesce(NEW.new_values::text, '') || '|' ||
+               v_prev_hash;
+
+  NEW.current_hash := encode(digest(v_payload, 'sha256'), 'hex');
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER trg_chain_audit_log
+  BEFORE INSERT ON public.audit_log
+  FOR EACH ROW EXECUTE FUNCTION public.chain_audit_log();
 
 -- 14. SCAN_INFO
 CREATE TABLE public.scan_info (
