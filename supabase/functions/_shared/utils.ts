@@ -12,8 +12,14 @@ export function getSupabaseAdmin() {
   )
 }
 
-// ── Load active AI prompt from database (hot-swappable) ───────
+// ── Load active AI prompt from database (cached at cold start) ─
+const _promptCache = new Map<string, string>()
+
 export async function getActivePrompt(functionName: string, fallback: string): Promise<string> {
+  // Return cached version — only DB-fetches once per cold start
+  if (_promptCache.has(functionName)) {
+    return _promptCache.get(functionName)!
+  }
   try {
     const supabase = getSupabaseAdmin()
     const { data } = await supabase
@@ -24,7 +30,9 @@ export async function getActivePrompt(functionName: string, fallback: string): P
       .order('created_at', { ascending: false })
       .limit(1)
       .single()
-    return data?.prompt_text || fallback
+    const prompt = data?.prompt_text || fallback
+    _promptCache.set(functionName, prompt)
+    return prompt
   } catch {
     return fallback
   }
