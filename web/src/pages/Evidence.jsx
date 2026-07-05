@@ -94,6 +94,7 @@ export default function Evidence({ controlId }) {
           status:       ev.status,
           reviewer:     ev.reviewed_by_name || '—',
           reviewDate:   ev.review_date ? new Date(ev.review_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null,
+          sha256Hash:   ev.sha256_hash,
         }));
 
         const latest = evRecords[0] || null;
@@ -297,7 +298,14 @@ export default function Evidence({ controlId }) {
                           <div className="ev-file-icon">{getIcon(f.name)}</div>
                           <div className="ev-file-info">
                             <div className="ev-file-name">{f.name}</div>
-                            <div className="ev-file-meta">{f.size} · Uploaded by {f.uploadedBy} · {f.uploadedDate}</div>
+                            <div className="ev-file-meta">
+                              {f.size} · Uploaded by {f.uploadedBy} · {f.uploadedDate}
+                              {f.sha256Hash && (
+                                <div style={{ fontSize: '9px', fontFamily: 'var(--font-mono)', color: 'var(--text-info)', marginTop: '3px' }}>
+                                  SHA-256: {f.sha256Hash}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div style={{ marginRight: '10px' }}><StatusBadge status={f.status} /></div>
                           <div className="ev-file-actions"><button className="btn-sm">View</button></div>

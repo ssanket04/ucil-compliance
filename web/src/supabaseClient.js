@@ -246,6 +246,18 @@ export async function uploadEvidence(controlId, file) {
   const { error: uploadError } = await sb.storage
     .from('evidence-files').upload(filePath, file, { upsert: false });
   if (uploadError) throw uploadError;
+  
+  // Calculate SHA-256 hash client-side for audit non-repudiation
+  let sha256Hash = null;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    sha256Hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  } catch (hashErr) {
+    console.error('Failed to calculate SHA-256 hash:', hashErr);
+  }
+
   const { data, error } = await sb.from('evidence').insert({
     control_id:  controlId,
     file_name:   file.name,
@@ -254,6 +266,7 @@ export async function uploadEvidence(controlId, file) {
     file_type:   file.type,
     uploaded_by: CURRENT_USER ? CURRENT_USER.id : null,
     status:      'Pending',
+    sha256_hash: sha256Hash,
   }).select().single();
   if (error) throw error;
   return data;
