@@ -78,17 +78,12 @@ CREATE POLICY "frameworks_read_auditor"
     OR public.get_user_role() = 'Auditor'
   );
 
--- ── 5.6. SYSTEM ACTOR SENTINEL USER ──────────────────────────
--- Insert a fixed system actor so triggers can attribute automated changes
-INSERT INTO public.users (
-  id, email, full_name, role, domain
-) VALUES (
-  'ffffffff-ffff-ffff-ffff-ffffffffffff',
-  'system@ucil.internal',
-  'System Process',
-  'Admin',
-  'System'
-) ON CONFLICT (id) DO NOTHING;
+-- ── 5.6. SYSTEM ACTOR — NOT APPLICABLE IN SUPABASE ──────────
+-- public.users.id is a FK to auth.users(id) in Supabase.
+-- Fake/sentinel UUIDs cannot be inserted from the SQL editor.
+-- System-initiated actions (triggers, cron jobs) use NULL for
+-- performed_by / changed_by. NULL = automated process. This is
+-- correct and expected behaviour in Supabase deployments.
 
 -- ── 5.7. FIX anonymize_user — TRUE IRREVERSIBLE ANONYMISATION ─
 CREATE OR REPLACE FUNCTION public.anonymize_user(p_user_id UUID)
