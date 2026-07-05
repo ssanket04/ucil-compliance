@@ -1,10 +1,10 @@
 // supabase/functions/auto-mapping/index.ts
 // Runs after a new framework is ingested
 // Compares each new clause against all existing canonical controls
-// Auto-approves >= 0.85, routes < 0.85 to SME queue
+// Auto-approves >= 0.85, routes 0.50–0.84 to SME queue, rejects < 0.50
 //
 // POST body: { framework_id, clauses: [{ref, text}] }
-// Returns:   { processed, auto_approved, sme_queue, conflicts_found }
+// Returns:   { processed, auto_approved, sme_queue, auto_rejected, conflicts_found }
 
 import { callClaudeJSON, CORS, jsonResponse, errorResponse, getSupabaseAdmin } from '../_shared/utils.ts'
 
@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
 
     let autoApproved = 0
     let smeQueue = 0
+    let autoRejected = 0
     let conflictsFound = 0
     const processed = []
 
@@ -91,8 +92,8 @@ Which existing control best matches this clause? Return the best match index and
           }, { onConflict: 'control_id,framework_id,clause_ref' })
           autoApproved++
 
-        } else if (matchedControl && result.confidence >= 0.65) {
-          // Route to SME queue
+        } else if (matchedControl && result.confidence >= 0.50) {
+          // Route to SME queue — borderline matches only (0.50–0.84)
           await supabase.from('sme_review_queue').insert({
             mapping_id:       `MAP-${framework_id.slice(0,8)}-${Date.now()}`,
             control_id_a:     matchedControl.id,
@@ -104,14 +105,18 @@ Which existing control best matches this clause? Return the best match index and
           })
           smeQueue++
 
-        } else if (!matchedControl || result.confidence < 0.65) {
-          // No match — create a gap
+        } else {
+          // Confidence < 0.50 or no match — auto-reject, create gap
+          // Low-confidence mappings NEVER enter SME queue (prevents noise)
+          autoRejected++
           await supabase.from('gaps').insert({
             gap_code:    `GAP-${framework_id.slice(0,8)}-${clause.ref.replace(/\./g,'')}`,
-            severity:    'medium',
-            description: `No existing control mapped to ${clause.ref}: ${clause.text.substring(0, 100)}`,
+            clause_ref:  clause.ref,
+            severity:    result.confidence <= 0 ? 'critical' : 'medium',
+            description: `No matching control found for ${clause.ref}: ${clause.text.substring(0, 100)}`,
+            why_critical: result.rationale || null,
             status:      'Open',
-          })
+          }).select().maybeSingle()
         }
 
         if (result.is_conflict) {
@@ -139,7 +144,9 @@ Which existing control best matches this clause? Return the best match index and
           clause_ref:    clause.ref,
           matched_to:    matchedControl?.control_code || null,
           confidence:    result.confidence,
-          action:        result.confidence >= 0.85 ? 'auto-approved' : result.confidence >= 0.65 ? 'sme-queue' : 'gap-created',
+          action:        result.confidence >= 0.85 ? 'auto-approved'
+                       : result.confidence >= 0.50 ? 'sme-queue'
+                       : 'auto-rejected',
         })
 
       } catch (clauseErr) {
@@ -158,6 +165,7 @@ Which existing control best matches this clause? Return the best match index and
       processed: processed.length,
       auto_approved:   autoApproved,
       sme_queue:       smeQueue,
+      auto_rejected:   autoRejected,
       conflicts_found: conflictsFound,
       details:         processed,
     })
