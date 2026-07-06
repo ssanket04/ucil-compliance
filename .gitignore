@@ -40,3 +40,6 @@ Thumbs.db
 # Backup folders
 web_legacy/
 
+# Supabase temp config
+supabase/.temp/
+
