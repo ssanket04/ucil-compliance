@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DATA } from '../data';
-import { fetchDomainStats, fetchAllEvidence, fetchGaps } from '../supabaseClient';
+import { fetchDomainStats, fetchAllEvidence, fetchGaps, approveEvidence, rejectEvidence } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 import RemarkBlock from '../components/RemarkBlock';
@@ -13,70 +13,93 @@ export default function DomainHead({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [expandedDomains, setExpandedDomains] = useState({});
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [controlsRaw, allEvidence, allGaps] = await Promise.all([
-          fetchDomainStats(),
-          fetchAllEvidence(),
-          fetchGaps(),
-        ]);
+  const loadData = async () => {
+    try {
+      const [controlsRaw, allEvidence, allGaps] = await Promise.all([
+        fetchDomainStats(),
+        fetchAllEvidence(),
+        fetchGaps(),
+      ]);
 
-        const gMap = {};
-        allGaps.forEach(g => { gMap[g.gap_code] = g; });
-        setGapByCode(gMap);
+      const gMap = {};
+      allGaps.forEach(g => { gMap[g.gap_code] = g; });
+      setGapByCode(gMap);
 
-        const evMap = {};
-        allEvidence.forEach(ev => {
-          if (!evMap[ev.control_id]) evMap[ev.control_id] = [];
-          evMap[ev.control_id].push(ev);
-        });
-        setEvidenceByControl(evMap);
+      const evMap = {};
+      allEvidence.forEach(ev => {
+        if (!evMap[ev.control_id]) evMap[ev.control_id] = [];
+        evMap[ev.control_id].push(ev);
+      });
+      setEvidenceByControl(evMap);
 
-        const source = controlsRaw.length ? controlsRaw : DATA.controls.map(c => ({
-          id:               null,
-          control_code:     c.id,
-          name:             c.name,
-          domain_name:      c.domain,
-          domain_head_name: c.domainHead,
-          owner_name:       c.owner,
-          status:           c.status,
-          status_reason:    c.reason,
-          confidence_score: c.confidence,
-        }));
+      const source = controlsRaw.length ? controlsRaw : DATA.controls.map(c => ({
+        id:               null,
+        control_code:     c.id,
+        name:             c.name,
+        domain_name:      c.domain,
+        domain_head_name: c.domainHead,
+        owner_name:       c.owner,
+        status:           c.status,
+        status_reason:    c.reason,
+        confidence_score: c.confidence,
+      }));
 
-        setTotalControlsCount(source.length);
+      setTotalControlsCount(source.length);
 
-        const dStats = {};
-        source.forEach(c => {
-          const key = c.domain_name;
-          if (!dStats[key]) {
-            dStats[key] = {
-              name: key,
-              head: c.domain_head_name,
-              totalControls: 0,
-              active: 0,
-              underReview: 0,
-              failed: 0,
-              controls: []
-            };
-          }
-          dStats[key].totalControls++;
-          if (c.status === 'Active')            dStats[key].active++;
-          else if (c.status === 'Under Review') dStats[key].underReview++;
-          else if (c.status === 'Failed')       dStats[key].failed++;
-          dStats[key].controls.push(c);
-        });
+      const dStats = {};
+      source.forEach(c => {
+        const key = c.domain_name;
+        if (!dStats[key]) {
+          dStats[key] = {
+            name: key,
+            head: c.domain_head_name,
+            totalControls: 0,
+            active: 0,
+            underReview: 0,
+            failed: 0,
+            controls: []
+          };
+        }
+        dStats[key].totalControls++;
+        if (c.status === 'Active')            dStats[key].active++;
+        else if (c.status === 'Under Review') dStats[key].underReview++;
+        else if (c.status === 'Failed')       dStats[key].failed++;
+        dStats[key].controls.push(c);
+      });
 
-        setDomains(Object.values(dStats));
-      } catch (err) {
-        console.error('Error loading Domain Head View:', err);
-      } finally {
-        setLoading(false);
-      }
+      setDomains(Object.values(dStats));
+    } catch (err) {
+      console.error('Error loading Domain Head View:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
   }, []);
+
+  const handleApprove = async (evidenceId) => {
+    try {
+      await approveEvidence(evidenceId);
+      alert('Evidence approved successfully!');
+      await loadData();
+    } catch (err) {
+      alert('Approval failed: ' + err.message);
+    }
+  };
+
+  const handleReject = async (evidenceId) => {
+    const reason = prompt('Please enter a rejection reason:');
+    if (!reason?.trim()) return;
+    try {
+      await rejectEvidence(evidenceId, reason, '');
+      alert('Evidence returned/rejected successfully!');
+      await loadData();
+    } catch (err) {
+      alert('Rejection failed: ' + err.message);
+    }
+  };
 
   if (loading) {
     return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Domain Head View...</div>;
@@ -213,8 +236,8 @@ export default function DomainHead({ onNavigate }) {
                               <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
                                 {(evOverall === 'Under Review' || evOverall === 'Approved') && (
                                   <>
-                                    <button className="btn btn-sm btn-success">✓ Approve Evidence</button>
-                                    <button className="btn btn-sm btn-danger">↩ Return to Owner</button>
+                                    <button className="btn btn-sm btn-success" onClick={() => handleApprove(latestEv.id)}>✓ Approve Evidence</button>
+                                    <button className="btn btn-sm btn-danger" onClick={() => handleReject(latestEv.id)}>↩ Return to Owner</button>
                                   </>
                                 )}
                                 <button className="btn btn-sm btn-info" onClick={() => onNavigate('evidence', { controlId: c.control_code })}>View Full Evidence Folder →</button>

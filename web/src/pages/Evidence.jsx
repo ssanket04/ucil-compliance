@@ -10,6 +10,9 @@ import {
   uploadEvidence,
   submitEvidenceForReview,
   runEvidenceVerdict,
+  approveEvidence,
+  rejectEvidence,
+  saveEvidenceRemark,
   formatTimestamp,
   timeAgo
 } from '../supabaseClient';
@@ -198,16 +201,51 @@ export default function Evidence({ controlId }) {
     }
   };
 
+  const handleApprove = async (evidenceId, cId) => {
+    try {
+      await approveEvidence(evidenceId);
+      alert('Evidence approved successfully!');
+      await loadData();
+      loadTimeline(cId);
+    } catch (err) {
+      alert('Approval failed: ' + err.message);
+    }
+  };
+
+  const handleReject = async (evidenceId, cId) => {
+    const reason = prompt('Please enter a rejection reason:');
+    if (!reason?.trim()) return;
+    try {
+      await rejectEvidence(evidenceId, reason, '');
+      alert('Evidence rejected and returned to owner successfully!');
+      await loadData();
+      loadTimeline(cId);
+    } catch (err) {
+      alert('Rejection failed: ' + err.message);
+    }
+  };
+
+  const handleSaveRemark = async (evidenceId, text, cId) => {
+    try {
+      await saveEvidenceRemark(evidenceId, text);
+      alert('Remarks saved successfully!');
+      await loadData();
+      loadTimeline(cId);
+    } catch (err) {
+      alert('Save failed: ' + err.message);
+    }
+  };
+
   if (loading) {
     return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Evidence Management...</div>;
   }
 
   const m = metrics || DATA.metrics;
-  const approvedCount    = m.implemented    || folders.filter(f => f.overallStatus === 'Approved').length;
-  const underReviewCount = m.in_progress_ev_review    ?? m.inProgress?.evidenceUnderReview ?? folders.filter(f => f.overallStatus === 'Under Review').length;
-  const reassignedCount  = m.in_progress_ev_reassigned ?? m.inProgress?.evidenceReassigned  ?? folders.filter(f => f.overallStatus === 'Reassigned').length;
-  const pendingCount     = m.in_progress_ev_pending    ?? m.inProgress?.evidencePending     ?? folders.filter(f => f.overallStatus === 'Pending').length;
-  const rejectedCount    = m.open_gaps      || m.openGaps       || folders.filter(f => f.overallStatus === 'Rejected').length;
+  const approvedCount = m.implemented || folders.filter(f => f.overallStatus === 'Approved').length;
+  const underReviewCount = m.in_progress_ev_review ?? m.inProgress?.evidenceUnderReview ?? folders.filter(f => f.overallStatus === 'Under Review').length;
+  const reassignedCount = m.in_progress_ev_reassigned ?? m.inProgress?.evidenceReassigned ?? folders.filter(f => f.overallStatus === 'Reassigned').length;
+  const pendingCount = m.in_progress_ev_pending ?? m.inProgress?.evidencePending ?? folders.filter(f => f.overallStatus === 'Pending').length;
+  const rejectedCount = m.open_gaps || m.openGaps || folders.filter(f => f.overallStatus === 'Rejected').length;
 
   const fileIcons = { '.pdf': '📄', '.xlsx': '📊', '.docx': '📝' };
   const getIcon = (name) => fileIcons[name.slice(name.lastIndexOf('.')).toLowerCase()] || '📎';
@@ -266,9 +304,9 @@ export default function Evidence({ controlId }) {
           const timelineItems = timelines[ev.controlId] || [];
           const isUploading = uploading[ev.controlId];
 
-          const folderStatusClass = ev.overallStatus === 'Approved'     ? 'badge-green'
-            : ev.overallStatus === 'Rejected'     ? 'badge-red'
-            : ev.overallStatus === 'Reassigned'   ? 'badge-blue'
+          const folderStatusClass = ev.overallStatus === 'Approved' ? 'badge-green'
+            : ev.overallStatus === 'Rejected' ? 'badge-red'
+            : ev.overallStatus === 'Reassigned' ? 'badge-blue'
             : ev.overallStatus === 'Under Review' ? 'badge-amber' : 'badge-gray';
 
           return (
@@ -282,7 +320,7 @@ export default function Evidence({ controlId }) {
                 <span className={`badge ${folderStatusClass}`} style={{ marginRight: '16px' }}>{ev.overallStatus}</span>
                 <div className="folder-chevron" style={{ transform: isExpanded ? 'rotate(90deg)' : 'none', color: isExpanded ? 'var(--accent-gold)' : 'inherit' }}>▶</div>
               </div>
-              
+
               {isExpanded && (
                 <div className="folder-body">
                   {/* Upload File Zone */}
@@ -293,7 +331,7 @@ export default function Evidence({ controlId }) {
                     <div className="upload-zone" onClick={() => document.getElementById(`fileinput-${ev.controlId}`).click()}>
                       <div style={{ fontSize: '24px', marginBottom: '8px', color: 'var(--accent-gold)' }}>↑</div>
                       <div style={{ fontSize: '13px', fontWeight: 600 }}>{isUploading ? 'Uploading & verifying file...' : 'Drop files here or click to browse'}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>Secure upload: PDF, XLSX, DOCX formats supported. Limit 50MB.</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>PDF, XLSX, DOCX formats supported. Limit 50MB.</div>
                     </div>
                     <input type="file" id={`fileinput-${ev.controlId}`} style={{ display: 'none' }} onChange={(e) => handleFileUploadChange(ev.controlDbId, ev.controlId, e.target.files[0])} />
                   </div>
@@ -333,11 +371,31 @@ export default function Evidence({ controlId }) {
                   {/* Verdict & Remarks Bento Boxes */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
                     <RemarkBlock title="AI Compliance Verdict" icon="🤖" content={ev.aiVerdict || ev.aiDetail || null} type="ai" />
-                    
+
                     <div className="remark-block">
                       <div className="remark-header">✍️ Control Owner Remarks</div>
-                      <div className="remark-body">
-                        <textarea className="form-textarea" placeholder="Add or edit manual remarks…" rows="3" style={{ minHeight: '80px', margin: 0 }} defaultValue={ev.manualRemark || ''} />
+                      <div className="remark-body" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <textarea
+                          id={`remark-input-${ev.controlId}`}
+                          className="form-textarea"
+                          placeholder="Add or edit manual remarks…"
+                          rows="3"
+                          style={{ minHeight: '80px', margin: 0 }}
+                          defaultValue={ev.manualRemark || ''}
+                        />
+                        {ev.files.length > 0 && (
+                          <button
+                            className="btn btn-sm btn-info"
+                            style={{ alignSelf: 'flex-end' }}
+                            onClick={() => {
+                              const latest = ev.files[0];
+                              const textVal = document.getElementById(`remark-input-${ev.controlId}`).value;
+                              handleSaveRemark(latest.id, textVal, ev.controlId);
+                            }}
+                          >
+                            Save Remarks
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -366,13 +424,15 @@ export default function Evidence({ controlId }) {
                   </div>
 
                   {/* Action Bar */}
-                  <div style={{ background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)', padding: '16px', marginTop: '16px' }}>
-                    <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Review Actions</div>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      <button className="btn btn-sm btn-success">✓ Approve Evidence</button>
-                      <button className="btn btn-sm btn-danger">↩ Return to Owner</button>
+                  {ev.files.length > 0 && (
+                    <div style={{ background: 'rgba(0, 0, 0, 0.2)', border: '1px solid var(--border-t)', borderRadius: 'var(--r-md)', padding: '16px', marginTop: '16px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Review Actions</div>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <button className="btn btn-sm btn-success" onClick={() => handleApprove(ev.files[0].id, ev.controlId)}>✓ Approve Evidence</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleReject(ev.files[0].id, ev.controlId)}>↩ Return to Owner</button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
