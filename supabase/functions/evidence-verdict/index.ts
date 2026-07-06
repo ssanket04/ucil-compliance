@@ -124,8 +124,9 @@ Determine if this evidence sufficiently proves the control is in place.`
       confidence: number
     }>(prompt, SYSTEM, 1200)
 
-    // 5. Save AI verdict to evidence table
-    const finalRedFlags = [...result.red_flags]
+    // 5. Save AI verdict to evidence table (guard against omitted arrays)
+    const finalRedFlags = Array.isArray(result.red_flags) ? [...result.red_flags] : []
+    const missingList   = Array.isArray(result.missing) ? result.missing : []
     let finalDetail = result.detail
     
     if (!hashMatched) {
@@ -138,14 +139,14 @@ Determine if this evidence sufficiently proves the control is in place.`
       .update({
         ai_verdict:         !hashMatched ? 'Rejected' : result.verdict,
         ai_verdict_detail:  finalDetail,
-        ai_missing_elements: result.missing.join('; '),
+        ai_missing_elements: missingList.join('; '),
         ai_red_flags:       finalRedFlags.join('; '),
         updated_at:         new Date().toISOString(),
       })
       .eq('id', evidence_id)
 
     // 6. Notify Domain Head if red flags found
-    if (result.red_flags.length > 0) {
+    if (finalRedFlags.length > 0) {
       const { data: ctrl } = await supabase
         .from('controls')
         .select('domain_head_id, control_code, name')
@@ -158,7 +159,7 @@ Determine if this evidence sufficiently proves the control is in place.`
           ctrl.domain_head_id,
           'Evidence uploaded',
           `AI flagged issues in evidence for ${ctrl.control_code}`,
-          `${ctrl.name}: AI verdict is "${result.verdict}". Red flags: ${result.red_flags.slice(0, 2).join(', ')}`,
+          `${ctrl.name}: AI verdict is "${result.verdict}". Red flags: ${finalRedFlags.slice(0, 2).join(', ')}`,
           'evidence',
           evidence_id
         )

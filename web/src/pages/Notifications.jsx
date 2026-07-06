@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
+
 import { fetchNotifications, markAllNotificationsRead, timeAgo } from '../supabaseClient';
 import Badge from '../components/Badge';
+import PageLoader from '../components/PageLoader';
 
 export default function Notifications({ onNavigate }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadNotifications() {
       try {
         const notifsRaw = await fetchNotifications();
+        if (!isMounted) return;
         const mappedNotifs = notifsRaw.length ? notifsRaw.map(n => ({
           id:     n.id,
           type:   n.trigger_event.includes('reject') ? 'warning' : n.trigger_event.includes('critical') ? 'danger' : 'info',
@@ -28,14 +31,19 @@ export default function Notifications({ onNavigate }) {
       } catch (err) {
         console.error('Error loading notifications:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadNotifications();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading notifications...</div>;
+    return <PageLoader message="Loading system notifications..." />;
   }
 
   return (

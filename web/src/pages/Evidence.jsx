@@ -1,25 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DATA } from '../data';
+
 import {
   fetchAllEvidence,
   fetchControls,
   fetchMetrics,
   fetchAuditLog,
-  fetchEvidenceForControl,
   fetchEvidenceTimeline,
   uploadEvidence,
   submitEvidenceForReview,
-  runEvidenceVerdict,
+  getEvidenceFileUrl,
   approveEvidence,
   rejectEvidence,
   saveEvidenceRemark,
   formatTimestamp,
+  formatDate,
   timeAgo
 } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 import RemarkBlock from '../components/RemarkBlock';
 import EvidenceTimeline from '../components/EvidenceTimeline';
+import PageLoader from '../components/PageLoader';
 
 export default function Evidence({ controlId }) {
   const [folders, setFolders] = useState([]);
@@ -31,6 +32,8 @@ export default function Evidence({ controlId }) {
   const [timelines, setTimelines] = useState({});
   const [timelineLoading, setTimelineLoading] = useState({});
   const [uploading, setUploading] = useState({});
+  const [uploadMsg, setUploadMsg] = useState({});
+  const [errorMsg, setErrorMsg] = useState({});
 
   const folderRefs = useRef({});
 
@@ -91,6 +94,7 @@ export default function Evidence({ controlId }) {
           reviewer:     ev.reviewed_by_name || '—',
           reviewDate:   ev.review_date ? new Date(ev.review_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null,
           sha256Hash:   ev.sha256_hash,
+          filePath:     ev.file_path,
         }));
 
         const latest = evRecords[0] || null;
@@ -121,7 +125,188 @@ export default function Evidence({ controlId }) {
   };
 
   useEffect(() => {
-    loadData();
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const [allEvidence, allControls, metricsRaw, auditLog] = await Promise.all([
+          fetchAllEvidence(),
+          fetchControls(),
+          fetchMetrics(),
+          fetchAuditLog(20),
+        ]);
+
+        if (!isMounted) return;
+
+        const controls = allControls.length ? allControls.map(c => ({
+          id:          c.id,
+          control_code: c.control_code,
+          name:        c.name,
+          domain:      c.domain_name || '—',
+          owner:       c.owner_name || '—',
+          domainHead:  c.domain_head_name || '—',
+          status:      c.status,
+        })) : [];
+
+        const evidenceByControlId = {};
+        allEvidence.forEach(ev => {
+          if (!evidenceByControlId[ev.control_id]) evidenceByControlId[ev.control_id] = [];
+          evidenceByControlId[ev.control_id].push(ev);
+        });
+
+        const evidenceByControlCode = {};
+        allEvidence.forEach(ev => {
+          if (!evidenceByControlCode[ev.control_code]) evidenceByControlCode[ev.control_code] = [];
+          evidenceByControlCode[ev.control_code].push(ev);
+        });
+
+        const allEvidenceFolders = controls.map(c => {
+          const evRecords = evidenceByControlId[c.id] || evidenceByControlCode[c.control_code] || [];
+          let overallStatus = c.status === 'Active' ? 'Approved'
+            : c.status === 'Failed' ? 'Rejected'
+            : c.status === 'Under Review' ? 'Under Review' : 'Pending';
+
+          if (evRecords.length > 0) {
+            const statuses = evRecords.map(e => e.status);
+            if (statuses.includes('Rejected'))          overallStatus = 'Rejected';
+            else if (statuses.includes('Reassigned'))   overallStatus = 'Reassigned';
+            else if (statuses.includes('Under Review')) overallStatus = 'Under Review';
+            else if (statuses.includes('Pending'))      overallStatus = 'Pending';
+            else if (statuses.every(s => s === 'Approved')) overallStatus = 'Approved';
+          }
+
+          const files = evRecords.map(ev => ({
+            id:           ev.id,
+            name:         ev.file_name,
+            size:         ev.file_size || '—',
+            uploadedBy:   ev.uploaded_by_name || '—',
+            uploadedDate: formatDate(ev.upload_date),
+            status:       ev.status,
+            reviewer:     ev.reviewed_by_name || '—',
+            reviewDate:   ev.review_date ? formatDate(ev.review_date) : null,
+            sha256Hash:   ev.sha256_hash,
+          }));
+
+          const latest = evRecords[0] || null;
+
+          return {
+            controlId:       c.control_code,
+            controlDbId:     c.id,
+            controlName:     c.name,
+            domain:          c.domain,
+            files,
+            overallStatus,
+            aiVerdict:       latest?.ai_verdict || null,
+            aiDetail:        latest?.ai_verdict_detail || null,
+            manualRemark:    latest?.manual_remark || null,
+            observations:    latest?.observations || null,
+            rejectionReason: latest?.rejection_reason || null,
+          };
+        });
+
+        setFolders(allEvidenceFolders);
+        setMetrics(metricsRaw);
+        setAuditLogs(auditLog);
+      } catch (err) {
+        console.error('Error loading evidence data:', err);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Re-fetch loadData when needed
+  const reloadData = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [allEvidence, allControls, metricsRaw, auditLog] = await Promise.all([
+        fetchAllEvidence(),
+        fetchControls(),
+        fetchMetrics(),
+        fetchAuditLog(20),
+      ]);
+
+      const controls = allControls.length ? allControls.map(c => ({
+        id:          c.id,
+        control_code: c.control_code,
+        name:        c.name,
+        domain:      c.domain_name || '—',
+        owner:       c.owner_name || '—',
+        domainHead:  c.domain_head_name || '—',
+        status:      c.status,
+      })) : [];
+
+      const evidenceByControlId = {};
+      allEvidence.forEach(ev => {
+        if (!evidenceByControlId[ev.control_id]) evidenceByControlId[ev.control_id] = [];
+        evidenceByControlId[ev.control_id].push(ev);
+      });
+
+      const evidenceByControlCode = {};
+      allEvidence.forEach(ev => {
+        if (!evidenceByControlCode[ev.control_code]) evidenceByControlCode[ev.control_code] = [];
+        evidenceByControlCode[ev.control_code].push(ev);
+      });
+
+      const allEvidenceFolders = controls.map(c => {
+        const evRecords = evidenceByControlId[c.id] || evidenceByControlCode[c.control_code] || [];
+        let overallStatus = c.status === 'Active' ? 'Approved'
+          : c.status === 'Failed' ? 'Rejected'
+          : c.status === 'Under Review' ? 'Under Review' : 'Pending';
+
+        if (evRecords.length > 0) {
+          const statuses = evRecords.map(e => e.status);
+          if (statuses.includes('Rejected'))          overallStatus = 'Rejected';
+          else if (statuses.includes('Reassigned'))   overallStatus = 'Reassigned';
+          else if (statuses.includes('Under Review')) overallStatus = 'Under Review';
+          else if (statuses.includes('Pending'))      overallStatus = 'Pending';
+          else if (statuses.every(s => s === 'Approved')) overallStatus = 'Approved';
+        }
+
+        const files = evRecords.map(ev => ({
+          id:           ev.id,
+          name:         ev.file_name,
+          size:         ev.file_size || '—',
+          uploadedBy:   ev.uploaded_by_name || '—',
+          uploadedDate: formatDate(ev.upload_date),
+          status:       ev.status,
+          reviewer:     ev.reviewed_by_name || '—',
+          reviewDate:   ev.review_date ? formatDate(ev.review_date) : null,
+          sha256Hash:   ev.sha256_hash,
+          filePath:     ev.file_path,
+        }));
+
+        const latest = evRecords[0] || null;
+
+        return {
+          controlId:       c.control_code,
+          controlDbId:     c.id,
+          controlName:     c.name,
+          domain:          c.domain,
+          files,
+          overallStatus,
+          aiVerdict:       latest?.ai_verdict || null,
+          aiDetail:        latest?.ai_verdict_detail || null,
+          manualRemark:    latest?.manual_remark || null,
+          observations:    latest?.observations || null,
+          rejectionReason: latest?.rejection_reason || null,
+        };
+      });
+
+      setFolders(allEvidenceFolders);
+      setMetrics(metricsRaw);
+      setAuditLogs(auditLog);
+    } catch (err) {
+      console.error('Error reloading evidence data:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -135,14 +320,14 @@ export default function Evidence({ controlId }) {
         }
       }, 300);
     }
-  }, [loading, controlId, folders]);
+  }, [loading, controlId]);
 
   const loadTimeline = async (id) => {
     const f = folders.find(folder => folder.controlId === id);
     if (!f) return;
     setTimelineLoading(prev => ({ ...prev, [id]: true }));
     try {
-      const evRecords = await fetchEvidenceForControl(f.controlDbId);
+      const evRecords = await fetchAllEvidence(f.controlDbId);
       if (evRecords.length > 0) {
         const tlRaw = await fetchEvidenceTimeline(evRecords[0].id);
         if (tlRaw.length > 0) {
@@ -173,71 +358,88 @@ export default function Evidence({ controlId }) {
     }
   };
 
-  const handleFileUploadChange = async (controlDbId, cId, file) => {
+  const handleFileUploadChange = React.useCallback(async (controlDbId, cId, file) => {
     if (!file) return;
+    // Enforce 50MB file size limit
+    if (file.size > 50 * 1024 * 1024) {
+      setErrorMsg(prev => ({ ...prev, [cId]: `File exceeds 50MB limit (${(file.size/1024/1024).toFixed(1)}MB)` }));
+      return;
+    }
     setUploading(prev => ({ ...prev, [cId]: true }));
+    setUploadMsg(prev => ({ ...prev, [cId]: '' }));
+    setErrorMsg(prev => ({ ...prev, [cId]: '' }));
     try {
       const result = await uploadEvidence(controlDbId, file);
+      // The DB automation trigger (trg_evidence_verdict) runs the AI verdict on
+      // insert while status is 'Pending'; then we advance the record to review.
       await submitEvidenceForReview(result.id);
-      try {
-        await runEvidenceVerdict(result.id, controlDbId);
-      } catch (aiErr) {
-        console.error('AI Verdict failed:', aiErr);
-      }
-      await loadData();
+      setUploadMsg(prev => ({ ...prev, [cId]: `"${file.name}" uploaded and submitted for AI review.` }));
+      await reloadData();
       loadTimeline(cId);
     } catch (err) {
       console.error('Upload failed:', err);
-      alert('Upload failed: ' + err.message);
+      setErrorMsg(prev => ({ ...prev, [cId]: 'Upload failed: ' + err.message }));
     } finally {
       setUploading(prev => ({ ...prev, [cId]: false }));
     }
-  };
+  }, [reloadData]);
 
-  const handleApprove = async (evidenceId, cId) => {
+  const handleApprove = React.useCallback(async (evidenceId, cId) => {
     try {
       await approveEvidence(evidenceId);
-      alert('Evidence approved successfully!');
-      await loadData();
+      setUploadMsg(prev => ({ ...prev, [cId]: 'Evidence approved successfully.' }));
+      await reloadData();
       loadTimeline(cId);
     } catch (err) {
-      alert('Approval failed: ' + err.message);
+      setErrorMsg(prev => ({ ...prev, [cId]: 'Approval failed: ' + err.message }));
     }
-  };
+  }, [reloadData]);
 
-  const handleReject = async (evidenceId, cId) => {
+  const handleReject = React.useCallback(async (evidenceId, cId) => {
     const reason = prompt('Please enter a rejection reason:');
     if (!reason?.trim()) return;
     try {
       await rejectEvidence(evidenceId, reason, '');
-      alert('Evidence rejected and returned to owner successfully!');
-      await loadData();
+      setUploadMsg(prev => ({ ...prev, [cId]: 'Evidence rejected and returned to owner.' }));
+      await reloadData();
       loadTimeline(cId);
     } catch (err) {
-      alert('Rejection failed: ' + err.message);
+      setErrorMsg(prev => ({ ...prev, [cId]: 'Rejection failed: ' + err.message }));
     }
-  };
+  }, [reloadData]);
 
-  const handleSaveRemark = async (evidenceId, text, cId) => {
+  const handleDownload = React.useCallback(async (filePath, cId) => {
+    if (!filePath) return;
+    try {
+      const url = await getEvidenceFileUrl(filePath);
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (err) {
+      setErrorMsg(prev => ({ ...prev, [cId]: 'Download failed: ' + err.message }));
+    }
+  }, []);
+
+  const handleSaveRemark = React.useCallback(async (evidenceId, text, cId) => {
     try {
       await saveEvidenceRemark(evidenceId, text);
-      alert('Remarks saved successfully!');
-      await loadData();
+      setUploadMsg(prev => ({ ...prev, [cId]: 'Remarks saved successfully!' }));
+      await reloadData();
       loadTimeline(cId);
     } catch (err) {
-      alert('Save failed: ' + err.message);
+      setErrorMsg(prev => ({ ...prev, [cId]: 'Save failed: ' + err.message }));
     }
-  };
+  }, [reloadData]);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Evidence Management...</div>;
+    return <PageLoader message="Loading Evidence Management dashboard..." />;
   }
 
-  const approvedCount = metrics?.implemented ?? folders.filter(f => f.overallStatus === 'Approved').length;
-  const underReviewCount = metrics?.in_progress_ev_review ?? folders.filter(f => f.overallStatus === 'Under Review').length;
-  const reassignedCount = metrics?.in_progress_ev_reassigned ?? folders.filter(f => f.overallStatus === 'Reassigned').length;
-  const pendingCount = metrics?.in_progress_ev_pending ?? folders.filter(f => f.overallStatus === 'Pending').length;
-  const rejectedCount = metrics?.open_gaps ?? folders.filter(f => f.overallStatus === 'Rejected').length;
+  // Derive evidence stats from the actual folder states (the dashboard `metrics`
+  // row tracks different things — implemented controls, gaps — not evidence folders).
+  const approvedCount    = folders.filter(f => f.overallStatus === 'Approved').length;
+  const underReviewCount = folders.filter(f => f.overallStatus === 'Under Review').length;
+  const reassignedCount  = folders.filter(f => f.overallStatus === 'Reassigned').length;
+  const pendingCount     = folders.filter(f => f.overallStatus === 'Pending').length;
+  const rejectedCount    = folders.filter(f => f.overallStatus === 'Rejected').length;
 
   const fileIcons = { '.pdf': '📄', '.xlsx': '📊', '.docx': '📝' };
   const getIcon = (name) => fileIcons[name.slice(name.lastIndexOf('.')).toLowerCase()] || '📎';
@@ -327,7 +529,7 @@ export default function Evidence({ controlId }) {
                       <div style={{ fontSize: '13px', fontWeight: 600 }}>{isUploading ? 'Uploading & verifying file...' : 'Drop files here or click to browse'}</div>
                       <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>PDF, XLSX, DOCX formats supported. Limit 50MB.</div>
                     </div>
-                    <input type="file" id={`fileinput-${ev.controlId}`} style={{ display: 'none' }} onChange={(e) => handleFileUploadChange(ev.controlDbId, ev.controlId, e.target.files[0])} />
+                    <input type="file" id={`fileinput-${ev.controlId}`} style={{ display: 'none' }} onChange={(e) => { handleFileUploadChange(ev.controlDbId, ev.controlId, e.target.files[0]); e.target.value = ''; }} />
                   </div>
 
                   {/* File List */}
@@ -355,7 +557,7 @@ export default function Evidence({ controlId }) {
                               </div>
                             </div>
                             <div style={{ marginRight: '16px' }}><StatusBadge status={f.status} /></div>
-                            <div className="ev-file-actions"><button className="btn btn-sm">Download</button></div>
+                            <div className="ev-file-actions"><button className="btn btn-sm" onClick={() => handleDownload(f.filePath, ev.controlId)}>Download</button></div>
                           </div>
                         ))}
                       </div>

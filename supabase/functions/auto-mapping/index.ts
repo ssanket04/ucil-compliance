@@ -80,7 +80,8 @@ Which existing control best matches this clause? Return the best match index and
           conflict_note: string
         }>(prompt, SYSTEM, 400)
 
-        const matchedControl = result.best_match_index >= 0 ? controls[result.best_match_index] : null
+        const idx = result.best_match_index
+        const matchedControl = (Number.isInteger(idx) && idx >= 0 && idx < controls.length) ? controls[idx] : null
 
         if (matchedControl && result.confidence >= 0.85) {
           // Auto-approve: save to control_framework_mappings

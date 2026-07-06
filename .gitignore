@@ -5,7 +5,10 @@ node_modules/
 
 # Production / Build
 dist/
-build/
+/build/
+/web/dist/
+/web/build/
+!sql/build/
 
 # Local env files (MUST NEVER BE COMMITTED)
 .env

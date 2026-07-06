@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
-import { fetchRegulatoryChanges, fetchControls } from '../supabaseClient';
+
+import { fetchRegulatoryChanges, fetchControlsIndex, formatDate } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
+import PageLoader from '../components/PageLoader';
 
 export default function Regulatory() {
   const [changes, setChanges] = useState([]);
@@ -10,12 +11,15 @@ export default function Regulatory() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadRegulatory() {
       try {
         const [regulatory, allControls] = await Promise.all([
           fetchRegulatoryChanges(),
-          fetchControls(),
+          fetchControlsIndex(),
         ]);
+
+        if (!isMounted) return;
 
         const controlByUUID = {};
         allControls.forEach(c => { controlByUUID[c.id] = c; });
@@ -31,15 +35,14 @@ export default function Regulatory() {
           return {
             id:              r.circular_id,
             title:           r.title,
-            date:            r.issued_date ? new Date(r.issued_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—',
+            date:            formatDate(r.issued_date),
             impactedControls: actualImpactedCount || r.total_impacted || 0,
-            gaps:            gapsCount || r.gaps_count || 0,
-            status:          (gapsCount > 0 || (r.gaps_count && r.gaps_count > 0)) ? 'In review' : 'Remediated',
+            gaps:            gapsCount || r.total_gaps_created || 0,
+            status:          (gapsCount > 0 || (r.total_gaps_created && r.total_gaps_created > 0)) ? 'In review' : 'Remediated',
             impactedIds:     impactedIds,
             unmatched:       r.unmatched_clauses || [],
           };
         }) : [];
-
 
         setChanges(mappedChanges);
         if (mappedChanges.length > 0) {
@@ -48,14 +51,19 @@ export default function Regulatory() {
       } catch (err) {
         console.error('Error loading regulatory changes:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadRegulatory();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading regulatory updates...</div>;
+    return <PageLoader message="Loading regulatory compliance updates..." />;
   }
 
   const selected = changes.find(c => c.id === selectedId) || null;

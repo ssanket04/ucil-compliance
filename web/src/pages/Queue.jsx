@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
+
 import { fetchQueue, approveQueueItem, rejectQueueItem } from '../supabaseClient';
 import Badge from '../components/Badge';
 import ConfPill from '../components/ConfPill';
+import PageLoader from '../components/PageLoader';
 
-export default function Queue({ onQueueCountChange }) {
+export default function Queue({ onQueueCountChange, onNavigate }) {
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedItems, setExpandedItems] = useState({});
@@ -21,12 +22,14 @@ export default function Queue({ onQueueCountChange }) {
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadQueue() {
       try {
         const queueItems = await fetchQueue('Pending');
-
+        if (!isMounted) return;
         const mappedQueue = queueItems.length ? queueItems.map(item => ({
-          id:            item.mapping_id,
+          id:            item.id,                          // row UUID — unique, safe for React keys/state
+          code:          item.mapping_id || item.id.slice(0, 8),  // human-facing mapping code (not unique)
           dbId:          item.id,
           conf:          item.confidence_score,
           uniqueControl: item.controls?.name || 'Control mapping pending review',
@@ -47,14 +50,19 @@ export default function Queue({ onQueueCountChange }) {
       } catch (err) {
         console.error('Error loading queue:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadQueue();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading SME Review Queue...</div>;
+    return <PageLoader message="Loading SME review queue..." />;
   }
 
   const toggleItem = (id) => {
@@ -85,7 +93,12 @@ export default function Queue({ onQueueCountChange }) {
         await approveQueueItem(dbId, justification);
         setSuccessMsg('Queue item approved successfully!');
       } catch (err) {
-        setErrorMsg('Approval failed: ' + err.message);
+        if (err.code === 'PGRST116' || /0 rows|multiple \(or no\)|coerce/i.test(err.message || '')) {
+          setErrorMsg('This item has already been resolved by another reviewer.');
+          dismissItem(displayId);
+        } else {
+          setErrorMsg('Approval failed: ' + err.message);
+        }
         return;
       }
     } else {
@@ -109,7 +122,12 @@ export default function Queue({ onQueueCountChange }) {
         await rejectQueueItem(dbId, justification);
         setSuccessMsg('Queue item rejected successfully!');
       } catch (err) {
-        setErrorMsg('Rejection failed: ' + err.message);
+        if (err.code === 'PGRST116' || /0 rows|multiple \(or no\)|coerce/i.test(err.message || '')) {
+          setErrorMsg('This item has already been resolved by another reviewer.');
+          dismissItem(displayId);
+        } else {
+          setErrorMsg('Rejection failed: ' + err.message);
+        }
         return;
       }
     } else {
@@ -154,7 +172,7 @@ export default function Queue({ onQueueCountChange }) {
             return (
               <div className="queue-item" id={`qi-${item.id}`} key={item.id} style={{ borderLeft: item.conflict ? '3px solid var(--border-danger)' : '' }}>
                 <div className="queue-header" onClick={() => toggleItem(item.id)} style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div className="queue-id">{item.id}</div>
+                  <div className="queue-id">{item.code}</div>
                   
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '2px' }}>
@@ -229,7 +247,7 @@ export default function Queue({ onQueueCountChange }) {
                     <div className="queue-actions">
                       <button className="btn btn-sm btn-success" onClick={() => handleApprove(item.dbId, item.id)}>✓ Approve Mapping</button>
                       <button className="btn btn-sm btn-danger" onClick={() => handleReject(item.dbId, item.id)}>✗ Reject Mapping</button>
-                      <button className="btn btn-sm">✎ Edit Control</button>
+                      <button className="btn btn-sm" onClick={() => onNavigate && onNavigate('library')}>✎ View in Library</button>
                     </div>
                   </div>
                 )}

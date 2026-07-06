@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import { getCurrentSession, logout, subscribeToMetrics } from './supabaseClient';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +9,7 @@ import Ingest from './pages/Ingest';
 import Gaps from './pages/Gaps';
 import Regulatory from './pages/Regulatory';
 import DomainHead from './pages/DomainHead';
+import Conflicts from './pages/Conflicts';
 import Notifications from './pages/Notifications';
 
 const PAGE_TITLES = {
@@ -20,7 +21,8 @@ const PAGE_TITLES = {
   gaps: 'Gap Analysis',
   regulatory: 'Regulatory Change Impact',
   domainhead: 'Domain Head View',
-  notifications: 'Notifications Trigger Control',
+  conflicts: 'Conflicts & Overlaps',
+  notifications: 'System Notifications',
 };
 
 // SVG icons to replace old emoji indicators
@@ -71,6 +73,13 @@ const Icons = {
       <path d="M2 22h20M4 22V10l8-6 8 6v12M8 22v-6h8v6" />
     </svg>
   ),
+  conflicts: (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="18" cy="18" r="3" />
+      <circle cx="6" cy="6" r="3" />
+      <path d="M6 21V9a9 9 0 0 0 9 9" />
+    </svg>
+  ),
   notifications: (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
@@ -78,12 +87,46 @@ const Icons = {
   ),
 };
 
+
+// ── React Error Boundary — prevents blank white screen on unhandled exceptions ──
+class PageErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error('PageErrorBoundary caught:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: '48px 32px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <div style={{ fontSize: '28px', marginBottom: '12px' }}>⚠</div>
+          <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '8px' }}>
+            An unexpected error occurred on this page.
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '20px', fontFamily: 'var(--font-mono)' }}>
+            {this.state.error?.message || 'Unknown error'}
+          </div>
+          <button className="btn btn-sm btn-primary" onClick={() => this.setState({ hasError: false, error: null })}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [pageParams, setPageParams] = useState({});
-  const [queueCount, setQueueCount] = useState(6);
+  const [queueCount, setQueueCount] = useState(0);
 
   useEffect(() => {
     async function checkSession() {
@@ -174,28 +217,22 @@ export default function App() {
     : 'US';
 
   const renderActivePage = () => {
-    switch (currentPage) {
-      case 'dashboard':
-        return <Dashboard onNavigate={handleNavigate} />;
-      case 'library':
-        return <Library onNavigate={handleNavigate} />;
-      case 'evidence':
-        return <Evidence controlId={pageParams.controlId} />;
-      case 'queue':
-        return <Queue onQueueCountChange={(cnt) => setQueueCount(cnt)} />;
-      case 'ingest':
-        return <Ingest />;
-      case 'gaps':
-        return <Gaps />;
-      case 'regulatory':
-        return <Regulatory />;
-      case 'domainhead':
-        return <DomainHead onNavigate={handleNavigate} />;
-      case 'notifications':
-        return <Notifications onNavigate={handleNavigate} />;
-      default:
-        return <Dashboard onNavigate={handleNavigate} />;
-    }
+    const page = (() => {
+      switch (currentPage) {
+        case 'dashboard':    return <Dashboard onNavigate={handleNavigate} />;
+        case 'library':      return <Library onNavigate={handleNavigate} />;
+        case 'evidence':     return <Evidence controlId={pageParams.controlId} />;
+        case 'queue':        return <Queue onQueueCountChange={(cnt) => setQueueCount(cnt)} onNavigate={handleNavigate} />;
+        case 'ingest':       return <Ingest />;
+        case 'gaps':         return <Gaps />;
+        case 'regulatory':   return <Regulatory />;
+        case 'domainhead':   return <DomainHead onNavigate={handleNavigate} />;
+        case 'conflicts':    return <Conflicts onNavigate={handleNavigate} />;
+        case 'notifications':return <Notifications onNavigate={handleNavigate} />;
+        default:             return <Dashboard onNavigate={handleNavigate} />;
+      }
+    })();
+    return <PageErrorBoundary>{page}</PageErrorBoundary>;
   };
 
   return (
@@ -250,6 +287,10 @@ export default function App() {
             <button className={`nav-item ${currentPage === 'domainhead' ? 'active' : ''}`} onClick={() => handleNavigate('domainhead')}>
               <span className="nav-icon">{Icons.domainhead}</span>
               <span>Domain Head View</span>
+            </button>
+            <button className={`nav-item ${currentPage === 'conflicts' ? 'active' : ''}`} onClick={() => handleNavigate('conflicts')}>
+              <span className="nav-icon">{Icons.conflicts}</span>
+              <span>Conflicts & Overlaps</span>
             </button>
           </div>
 

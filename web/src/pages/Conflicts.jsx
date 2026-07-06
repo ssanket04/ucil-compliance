@@ -1,16 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
-import { fetchConflicts } from '../supabaseClient';
+
+import { fetchConflicts, updateConflictStatus } from '../supabaseClient';
 import Badge from '../components/Badge';
+import PageLoader from '../components/PageLoader';
 
 export default function Conflicts({ onNavigate }) {
   const [conflicts, setConflicts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionMsg, setActionMsg] = useState('');
+  const [actionErr, setActionErr] = useState('');
+
+  const applyStatus = async (code, status) => {
+    setActionMsg('');
+    setActionErr('');
+    try {
+      await updateConflictStatus(code, status);
+      setConflicts(prev => prev.map(c => (c.id === code ? { ...c, status } : c)));
+      setActionMsg(status === 'Resolved'
+        ? `${code} marked as Resolved.`
+        : `${code} escalated to CISO (Under Review).`);
+    } catch (err) {
+      setActionErr(`Action failed for ${code}: ${err.message}`);
+    }
+  };
 
   useEffect(() => {
+    let isMounted = true;
     async function loadConflicts() {
       try {
         const conflictsRaw = await fetchConflicts();
+        if (!isMounted) return;
         const mappedConflicts = conflictsRaw.length ? conflictsRaw.map(c => ({
           id:              c.conflict_code,
           title:           c.title,
@@ -29,14 +48,19 @@ export default function Conflicts({ onNavigate }) {
       } catch (err) {
         console.error('Error loading conflicts:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadConflicts();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading conflicts...</div>;
+    return <PageLoader message="Loading compliance conflicts..." />;
   }
 
   return (
@@ -55,6 +79,9 @@ export default function Conflicts({ onNavigate }) {
           </div>
         </div>
       )}
+
+      {actionErr && <div className="banner banner-danger" style={{ marginBottom: '16px' }}>{actionErr}</div>}
+      {actionMsg && <div className="banner banner-success" style={{ marginBottom: '16px' }}>{actionMsg}</div>}
 
       {/* Conflicts List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -116,8 +143,8 @@ export default function Conflicts({ onNavigate }) {
 
                 {/* Actions */}
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                  <button className="btn btn-sm btn-success">✓ Execute Resolution</button>
-                  <button className="btn btn-sm btn-danger">↩ Escalate to CISO</button>
+                  <button className="btn btn-sm btn-success" disabled={c.status === 'Resolved'} onClick={() => applyStatus(c.id, 'Resolved')}>✓ Execute Resolution</button>
+                  <button className="btn btn-sm btn-danger" disabled={c.status === 'Under Review'} onClick={() => applyStatus(c.id, 'Under Review')}>↩ Escalate to CISO</button>
                   <button className="btn btn-sm btn-info" onClick={() => onNavigate('gaps')}>View Related Gaps →</button>
                 </div>
               </div>

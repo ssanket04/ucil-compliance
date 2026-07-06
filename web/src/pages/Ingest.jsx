@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
-import { sb, runRegulatoryImpact, fetchRegulatoryChanges, CURRENT_USER, fetchScanInfo, fetchFrameworks, formatTimestamp } from '../supabaseClient';
+import { sb, calculateSHA256, insertRegulatoryChange, runRegulatoryImpact, fetchRegulatoryChanges, fetchScanInfo, fetchFrameworks, formatTimestamp } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
+import PageLoader from '../components/PageLoader';
+
+const typeColor = { Framework: 'blue', Circular: 'amber', 'Internal Policy': 'gray' };
+const icons     = { Framework: '📋', Circular: '📜', 'Internal Policy': '📁' };
+
 
 export default function Ingest() {
   const [scanInfo, setScanInfo] = useState(null);
@@ -17,10 +21,7 @@ export default function Ingest() {
   // Dynamic sources fetched from database frameworks table instead of static SOURCES
   const [sources, setSources] = useState([]);
 
-  const typeColor = { Framework: 'blue', Circular: 'amber', 'Internal Policy': 'gray' };
-  const icons     = { Framework: '📋', Circular: '📜', 'Internal Policy': '📁' };
-
-  const loadData = async () => {
+  const loadData = async (isMounted = true) => {
     try {
       const [scanRaw, regChangesRaw, frameworksRaw] = await Promise.all([
         fetchScanInfo(),
@@ -54,8 +55,6 @@ export default function Ingest() {
         approverDesig: ''
       }));
 
-      setJobs(mappedJobs);
-
       // Parse frameworks from database to populate Ingestion Sources dynamically
       const mappedSources = frameworksRaw && frameworksRaw.length > 0 ? frameworksRaw.map(fw => ({
         name:      fw.name,
@@ -64,21 +63,38 @@ export default function Ingest() {
         connected: fw.status === 'Loaded'
       })) : [];
 
-      setSources(mappedSources);
+      if (isMounted) {
+        setJobs(mappedJobs);
+        setSources(mappedSources);
+      }
     } catch (err) {
       console.error('Error fetching scan info in Ingest:', err);
     } finally {
-      setLoading(false);
+      if (isMounted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
+    let isMounted = true;
+    loadData(isMounted);
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleManualUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Enforce 50MB file size limit on client side
+    const MAX_FILE_SIZE = 50 * 1024 * 1024;
+    if (file.size > MAX_FILE_SIZE) {
+      setErrorMessage(`File "${file.name}" exceeds the 50MB limit (${(file.size / 1024 / 1024).toFixed(1)}MB). Please compress or split the document.`);
+      if (e.target) e.target.value = '';
+      return;
+    }
 
     setUploading(true);
     setSuccessMessage('');
@@ -86,11 +102,8 @@ export default function Ingest() {
     setUploadProgress('Analyzing file integrity...');
 
     try {
-      // Step 1: Calculate SHA-256 hash (Required for system files integrity check)
-      const arrayBuffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const sha256Hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      // Step 1: Calculate SHA-256 hash (tamper-evident integrity check)
+      const sha256Hash = await calculateSHA256(file);
 
       setUploadProgress('Uploading file to secure storage...');
 
@@ -99,21 +112,36 @@ export default function Ingest() {
       const { error: uploadError } = await sb.storage
         .from('evidence-files')
         .upload(filePath, file, { upsert: false });
-      
       if (uploadError) throw uploadError;
 
-      setUploadProgress('Analyzing document impact with AI model...');
+      setUploadProgress('Creating regulatory change record...');
 
-      // Step 3: Call regulatory impact edge function
-      const fileName = file.name;
-      const res = await runRegulatoryImpact(fileName, filePath, sha256Hash);
+      // Step 3: Insert regulatory_changes DB record FIRST
+      // The edge function requires a UUID of an existing record — it cannot work without this step.
+      const circularId = `MANUAL-${Date.now()}`;
+      const regChange = await insertRegulatoryChange({
+        circularId,
+        title:       file.name.replace(/\.[^.]+$/, ''),
+        issuer:      'Manual Upload',
+        issuedDate:  new Date().toISOString().split('T')[0],
+        filePath,
+        sha256Hash,
+      });
 
-      setSuccessMessage(`Document "${file.name}" ingested successfully! Mapped to ${res.total_impacted} controls and flagged ${res.total_new_gaps} gaps.`);
+      setUploadProgress('Running AI impact analysis (this may take up to 60 seconds)...');
+
+      // Step 4: Call the edge function with the DB record UUID
+      const res = await runRegulatoryImpact(regChange.id);
+
+      setSuccessMessage(
+        `Document "${file.name}" ingested successfully! ` +
+        `AI identified ${res.total_impacted ?? 0} impacted controls and ${res.total_new_gaps ?? 0} new gaps.`
+      );
       await loadData();
     } catch (err) {
       console.error('Manual ingestion failed:', err);
-      // Fallback details parse if error is raw JSON from Edge Function
       let friendlyError = err.message;
+      // Parse JSON error body from Edge Function if present
       if (err.message && err.message.includes('{')) {
         try {
           const startIdx = err.message.indexOf('{');
@@ -130,6 +158,10 @@ export default function Ingest() {
       if (e.target) e.target.value = '';
     }
   };
+
+  if (loading) {
+    return <PageLoader message="Loading connected ingestion logs and systems..." />;
+  }
 
   const lastScanTimestamp = scanInfo?.timestamp || '—';
   const scraperActiveState = scanInfo?.status || 'Inactive';

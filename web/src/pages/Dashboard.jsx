@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
 import { sb, fetchMetrics, fetchFrameworks, fetchRegulatoryChanges, fetchScanInfo, fetchAuditLog, formatTimestamp, timeAgo } from '../supabaseClient';
 import MetricCard from '../components/MetricCard';
 import { FrameworkBar } from '../components/FrameworkBar';
 import ActivityFeed from '../components/ActivityFeed';
 import Badge from '../components/Badge';
+import PageLoader from '../components/PageLoader';
 
 export default function Dashboard({ onNavigate }) {
   const [metrics, setMetrics] = useState(null);
@@ -17,6 +17,7 @@ export default function Dashboard({ onNavigate }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     async function loadData() {
       try {
         const [metricsRaw, frameworksRaw, regulatoryRaw, scanRaw, auditLog] = await Promise.all([
@@ -26,6 +27,8 @@ export default function Dashboard({ onNavigate }) {
           fetchScanInfo(),
           fetchAuditLog(10), // Fetch up to 10 logs for a better feed
         ]);
+
+        if (!isMounted) return;
 
         // Use Nullish Coalescing (??) instead of OR (||) to prevent 0 mapping to dummy fallbacks
         const m = metricsRaw ? {
@@ -97,19 +100,32 @@ export default function Dashboard({ onNavigate }) {
         };
         setScanInfo(sc);
 
-        // Map live audit actions using natural language
+        // Map live audit actions to natural language. The DB audit trigger writes
+        // action = `<table>_<OP>` (e.g. evidence_INSERT, controls_UPDATE); status
+        // detail lives in new_values, so we read both to phrase each entry.
         const act = auditLog && auditLog.length > 0 ? auditLog.map(a => {
-          let actionLabel = a.action.replace(/_/g, ' ');
-          if (a.action === 'evidence_uploaded') actionLabel = `uploaded verification evidence file`;
-          else if (a.action === 'evidence_approved') actionLabel = `approved uploaded evidence`;
-          else if (a.action === 'evidence_rejected') actionLabel = `rejected evidence and returned to owner`;
-          else if (a.action === 'gdpr_erasure') actionLabel = `applied GDPR PII erasure protocol`;
-          
+          const action = a.action || '';
+          const status = a.new_values?.status;
+          let actionLabel = action.replace(/_/g, ' ');
+          if (action === 'gdpr_erasure') actionLabel = 'applied GDPR PII erasure protocol';
+          else if (action.startsWith('evidence_')) {
+            if (action.endsWith('INSERT'))            actionLabel = 'uploaded verification evidence file';
+            else if (status === 'Approved')           actionLabel = 'approved uploaded evidence';
+            else if (status === 'Rejected')           actionLabel = 'rejected evidence and returned to owner';
+            else if (status === 'Under Review')       actionLabel = 'submitted evidence for review';
+            else                                      actionLabel = 'updated an evidence record';
+          }
+          else if (action.startsWith('controls_'))   actionLabel = 'updated a control record';
+          else if (action.startsWith('gaps_'))       actionLabel = action.endsWith('INSERT') ? 'logged a new compliance gap' : 'updated a compliance gap';
+          else if (action.startsWith('sme_review_queue_')) actionLabel = 'resolved an SME review mapping';
+
+          const isReject  = status === 'Rejected' || /reject|fail/i.test(action);
+          const isApprove = status === 'Approved' || /approve/i.test(action);
           return {
             text:  `${a.users?.full_name || 'System'} ${actionLabel}`,
             time:  timeAgo(a.performed_at),
-            color: a.action.includes('fail') || a.action.includes('reject') ? 'var(--text-danger)'
-                 : a.action.includes('approve') ? 'var(--text-success)'
+            color: isReject ? 'var(--text-danger)'
+                 : isApprove ? 'var(--text-success)'
                  : 'var(--text-info)',
           };
         }) : [];
@@ -130,19 +146,26 @@ export default function Dashboard({ onNavigate }) {
         } catch (chainErr) {
           console.warn('Audit verification query skipped:', chainErr.message);
         }
-        setAuditChainVerified(isChainSecure);
+        if (isMounted) {
+          setAuditChainVerified(isChainSecure);
+        }
 
       } catch (err) {
         console.error('Error loading dashboard:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Executive Dashboard...</div>;
+    return <PageLoader message="Loading compliance dashboard metrics..." />;
   }
 
   const m = metrics;
@@ -163,6 +186,11 @@ export default function Dashboard({ onNavigate }) {
   const multiplierVal = Number(m.controlMultiplier);
   const multiplierDisplay = m.uniqueCanonical > 0 && multiplierVal > 0 ? `1 → ${multiplierVal.toFixed(1)}×` : '1 → 1.0×';
   const lastScanTime = scanInfo?.lastCircularScan.timestamp || '—';
+  const scraperStatus = scanInfo?.lastCircularScan?.status || 'inactive';
+  const scraperDisplay = scraperStatus === 'up-to-date' ? 'Active'
+    : scraperStatus.charAt(0).toUpperCase() + scraperStatus.slice(1);
+  const scraperDeltaType = scraperStatus === 'failed' ? 'bad'
+    : scraperStatus === 'up-to-date' ? 'good' : 'warn';
 
   return (
     <>
@@ -269,7 +297,7 @@ export default function Dashboard({ onNavigate }) {
           <MetricCard label="AI Auto-Approval Rate" value={autoApprovalDisplay} delta={autoApprovalSub} deltaType="good" onClick={() => onNavigate('library')} />
         </div>
         <div className="col-4">
-          <MetricCard label="Live Circular Scraper" value="Active" delta={`Last scan: ${lastScanTime}`} deltaType="good" onClick={() => onNavigate('ingest')} />
+          <MetricCard label="Live Circular Scraper" value={scraperDisplay} delta={`Last scan: ${lastScanTime}`} deltaType={scraperDeltaType} onClick={() => onNavigate('ingest')} />
         </div>
 
         <div className="col-4">

@@ -12,13 +12,13 @@ export function getSupabaseAdmin() {
   )
 }
 
-// ── Load active AI prompt from database (cached at cold start) ─
-const _promptCache = new Map<string, string>()
+// ── Load active AI prompt from database (5-minute TTL cache) ──
+const _promptCache = new Map<string, { prompt: string; fetchedAt: number }>()
 
 export async function getActivePrompt(functionName: string, fallback: string): Promise<string> {
-  // Return cached version — only DB-fetches once per cold start
-  if (_promptCache.has(functionName)) {
-    return _promptCache.get(functionName)!
+  const cached = _promptCache.get(functionName);
+  if (cached && (Date.now() - cached.fetchedAt < 300000)) { // 5 minutes
+    return cached.prompt;
   }
   try {
     const supabase = getSupabaseAdmin()
@@ -31,15 +31,15 @@ export async function getActivePrompt(functionName: string, fallback: string): P
       .limit(1)
       .single()
     const prompt = data?.prompt_text || fallback
-    _promptCache.set(functionName, prompt)
+    _promptCache.set(functionName, { prompt, fetchedAt: Date.now() })
     return prompt
   } catch {
     return fallback
   }
 }
 
-// ── Call Groq API (replaces Claude) ───────────────────────────
-export async function callClaude(prompt: string, systemPrompt: string, maxTokens = 1500): Promise<string> {
+// ── Call Groq API (replaces old Claude backend) ────────────────
+export async function callAI(prompt: string, systemPrompt: string, maxTokens = 1500): Promise<string> {
   const apiKey = Deno.env.get('GROQ_API_KEY')!
 
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -49,7 +49,7 @@ export async function callClaude(prompt: string, systemPrompt: string, maxTokens
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',   // ✅ FIXED
+      model: 'llama-3.3-70b-versatile',
       max_tokens: maxTokens,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -60,21 +60,40 @@ export async function callClaude(prompt: string, systemPrompt: string, maxTokens
 
   if (!response.ok) {
     const err = await response.text()
-    throw new Error(`Groq API error ${response.status}: ${err}`) // ✅ FIXED
+    throw new Error(`Groq API error ${response.status}: ${err}`)
   }
 
   const data = await response.json()
-
-  return data.choices[0].message.content   // ✅ FIXED
+  const content = data?.choices?.[0]?.message?.content
+  if (typeof content !== 'string') {
+    throw new Error('Groq API returned an unexpected response shape (no message content)')
+  }
+  return content
 }
 
-// ── Call Claude and parse JSON response ───────────────────────
-export async function callClaudeJSON<T>(prompt: string, systemPrompt: string, maxTokens = 1500): Promise<T> {
-  const raw = await callClaude(prompt, systemPrompt, maxTokens)
+// ── Call AI and parse JSON response ───────────────────────────
+export async function callAIJSON<T>(prompt: string, systemPrompt: string, maxTokens = 1500): Promise<T> {
+  const raw = await callAI(prompt, systemPrompt, maxTokens)
   // Strip markdown code fences if present
-  const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  return JSON.parse(cleaned) as T
+  const cleaned = raw.replace(/```json\n?/gi, '').replace(/```\n?/g, '').trim()
+  try {
+    return JSON.parse(cleaned) as T
+  } catch {
+    // Models sometimes wrap JSON in prose ("Here is the JSON: …").
+    // Extract the first balanced-looking {...} block and retry.
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (match) {
+      try { return JSON.parse(match[0]) as T } catch { /* fall through */ }
+    }
+    throw new Error('AI_UNAVAILABLE: could not parse AI JSON response')
+  }
 }
+
+// @deprecated Use callAI instead
+export const callClaude = callAI;
+
+// @deprecated Use callAIJSON instead
+export const callClaudeJSON = callAIJSON;
 
 // ── CORS headers for browser calls ───────────────────────────
 export const CORS = {

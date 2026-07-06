@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
+
 import { fetchControls, fetchMetrics } from '../supabaseClient';
 import MetricCard from '../components/MetricCard';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 import ConfPill from '../components/ConfPill';
+import PageLoader from '../components/PageLoader';
 
 export default function Library({ onNavigate }) {
   const [controls, setControls] = useState([]);
@@ -21,12 +22,14 @@ export default function Library({ onNavigate }) {
   const [expandedReasons, setExpandedReasons] = useState({});
 
   useEffect(() => {
+    let isMounted = true;
     async function loadData() {
       try {
         const [controlsRaw, metricsRaw] = await Promise.all([
           fetchControls(),
           fetchMetrics(),
         ]);
+        if (!isMounted) return;
 
         // Use database controls only; do not fall back to DATA.controls if empty (Q22-A / Zero-state alignment)
         const mappedControls = controlsRaw && controlsRaw.length > 0 ? controlsRaw.map(c => ({
@@ -48,14 +51,19 @@ export default function Library({ onNavigate }) {
       } catch (err) {
         console.error('Error loading library:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Unified Control Library...</div>;
+    return <PageLoader message="Loading controls library..." />;
   }
 
   const total = controls.length;
@@ -73,6 +81,10 @@ export default function Library({ onNavigate }) {
     'Data Protection': 'green',
     'Change Mgmt': 'gray'
   };
+
+  // Derive filter options from actual database controls — single authoritative source
+  const allDomains = [...new Set(controls.map(c => c.domain).filter(Boolean))].sort();
+  const allFrameworks = [...new Set(controls.flatMap(c => [...(c.frameworks || []), ...(c.extra || [])]).filter(Boolean))].sort();
 
   const filtered = controls.filter(c => {
     const sTerm = search.toLowerCase();
@@ -131,18 +143,11 @@ export default function Library({ onNavigate }) {
           </div>
           <select className="filter-select" value={fwFilter} onChange={(e) => setFwFilter(e.target.value)}>
             <option value="">All frameworks</option>
-            <option value="ISO 27001">ISO 27001</option>
-            <option value="NIST">NIST</option>
-            <option value="RBI">RBI</option>
-            <option value="SOX">SOX</option>
+            {allFrameworks.map(fw => <option key={fw} value={fw}>{fw}</option>)}
           </select>
           <select className="filter-select" value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}>
             <option value="">All domains</option>
-            <option value="Access Control">Access Control</option>
-            <option value="Incident Mgmt">Incident Mgmt</option>
-            <option value="Data Protection">Data Protection</option>
-            <option value="Privileged Access">Privileged Access</option>
-            <option value="Change Mgmt">Change Mgmt</option>
+            {allDomains.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
           <select className="filter-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All status</option>

@@ -51,31 +51,23 @@ Analyse their intent, scope, and obligations. Return your analysis as JSON.`
       recommendation: string
     }>(prompt, SYSTEM)
 
-    // If IDs provided, save mapping to sme_review_queue or control_framework_mappings
-    if (control_a_id && control_b_id) {
+    // If both control IDs are provided, route the result for human review.
+    // NOTE: this is a control-to-control comparison with NO framework context,
+    // so it must not write to control_framework_mappings (framework_id is NOT
+    // NULL there). Matches at/above the SME band are queued for a reviewer, who
+    // records the authoritative framework mapping.
+    if (control_a_id && control_b_id && result.confidence >= 0.50) {
       const supabase = getSupabaseAdmin()
-
-      if (result.confidence >= 0.85) {
-        // Auto-approve: save to control_framework_mappings
-        await supabase.from('control_framework_mappings').upsert({
-          control_id:       control_a_id,
-          clause_ref:       control_b_id,
-          confidence_score: result.confidence,
-          rationale:        result.rationale,
-          status:           'Auto-Approved',
-        })
-      } else if (result.confidence >= 0.65) {
-        // Route to SME queue
-        await supabase.from('sme_review_queue').insert({
-          mapping_id:       `MAP-${Date.now()}`,
-          control_id_a:     control_a_id,
-          confidence_score: result.confidence,
-          ai_rationale:     result.rationale,
-          status:           'Pending',
-        })
-      }
-      // Below 0.65: no action, just return result
+      await supabase.from('sme_review_queue').insert({
+        mapping_id:       `SIM-${Date.now()}`,
+        control_id_a:     control_a_id,
+        control_id_b:     control_b_id,
+        confidence_score: result.confidence,
+        ai_rationale:     result.rationale,
+        status:           'Pending',
+      })
     }
+    // Below 0.50: no action, just return the result
 
     return jsonResponse(result)
 

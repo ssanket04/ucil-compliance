@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
+
 import { fetchGaps, generateRemediationPlan } from '../supabaseClient';
 import MetricCard from '../components/MetricCard';
 import Badge from '../components/Badge';
+import PageLoader from '../components/PageLoader';
 
 export default function Gaps() {
   const [gaps, setGaps] = useState([]);
@@ -14,9 +15,11 @@ export default function Gaps() {
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
     async function loadGaps() {
       try {
         const gapsRaw = await fetchGaps();
+        if (!isMounted) return;
         const mappedGaps = gapsRaw.length ? gapsRaw.map(g => ({
           id:       g.gap_code,
           sev:      g.severity,
@@ -27,19 +30,23 @@ export default function Gaps() {
           category: Array.isArray(g.impact_category) ? g.impact_category : ['Non-financial'],
         })) : [];
 
-
         setGaps(mappedGaps);
       } catch (err) {
         console.error('Error loading gaps:', err);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
     loadGaps();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading gaps...</div>;
+    return <PageLoader message="Loading compliance gaps..." />;
   }
 
   const counts = {

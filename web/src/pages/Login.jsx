@@ -19,9 +19,20 @@ export default function Login({ onLoginSuccess }) {
     try {
       if (isSignUpMode) {
         await signUpUser(email, password, fullName, role);
-        const user = await login(email, password);
-        if (user) {
-          onLoginSuccess(user);
+        try {
+          const user = await login(email, password);
+          if (user) {
+            onLoginSuccess(user);
+          }
+        } catch (loginErr) {
+          // If the project requires email confirmation, auto-login fails here.
+          if (/confirm/i.test(loginErr.message || '')) {
+            setIsSignUpMode(false);
+            setErrorMsg('Account created. Please confirm your email address, then sign in.');
+            setLoading(false);
+            return;
+          }
+          throw loginErr;
         }
       } else {
         const user = await login(email, password);
@@ -158,6 +169,7 @@ export default function Login({ onLoginSuccess }) {
                   <option value="Control Owner">Control Owner</option>
                   <option value="Domain Head">Domain Head</option>
                   <option value="CISO">CISO</option>
+                  <option value="Auditor">Auditor</option>
                   <option value="Admin">Admin</option>
                 </select>
               </div>

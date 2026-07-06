@@ -1,16 +1,24 @@
 import { createClient } from '@supabase/supabase-js'
 
-export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL_HERE';
-export const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || 'YOUR_SUPABASE_ANON_PUBLIC_KEY_HERE';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'YOUR_SUPABASE_URL_HERE';
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON || 'YOUR_SUPABASE_ANON_PUBLIC_KEY_HERE';
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
 
-export let CURRENT_USER = null;
-export let CURRENT_ROLE = null;
+let _currentUser = null;
+let _currentRole = null;
+
+export function getCurrentUser() {
+  return _currentUser;
+}
+
+export function getCurrentRole() {
+  return _currentRole;
+}
 
 export function setCurrentUser(user) {
-  CURRENT_USER = user;
-  CURRENT_ROLE = user?.role || null;
+  _currentUser = user;
+  _currentRole = user?.role || null;
 }
 
 /* ============================================================
@@ -58,33 +66,35 @@ export async function getCurrentSession() {
    METRICS  —  single row, kept live by DB triggers
    ============================================================ */
 export async function fetchMetrics() {
-  const { data, error } = await sb.from('metrics').select('*');
+  // Single authoritative metrics row — always exists, auto-updated by DB triggers
+  const { data, error } = await sb.from('metrics').select('*').limit(1).maybeSingle();
   if (error) { console.error('fetchMetrics:', error); return null; }
-  const m = data?.[0] || null;
   
-  if (!m) return null;
-  
-  const { data: cData } = await sb.from('controls').select('confidence_score');
-  if (cData && cData.length > 0) {
-    const total = cData.length;
-    const autoApproved = cData.filter(c => (c.confidence_score ?? 0.85) >= 0.85).length;
-    m.ai_auto_approval_rate = total > 0 ? Math.round((autoApproved / total) * 100 * 100) / 100 : 0;
-    m.unique_canonical = m.unique_canonical || total;
-  } else {
-    if (!m.unique_canonical) return null;
-  }
-  
-  if (m.frameworks_ingested && m.circulars_ingested && m.internal_policies) {
-    m.total_sources = m.frameworks_ingested + m.circulars_ingested + m.internal_policies;
-  }
-  
-  const { data: mappingsData } = await sb.from('control_framework_mappings').select('id', { count: 'exact', head: true });
-  if (mappingsData !== null && m.unique_canonical > 0) {
-    const totalMappings = mappingsData || 0;
-    m.total_mappings = totalMappings;
-    m.control_multiplier = (totalMappings / m.unique_canonical).toFixed(2);
-  }
-  
+  // Never return null — return zero-state object so every consumer sees 0, not undefined
+  const m = data || {
+    unique_canonical: 0, implemented: 0,
+    in_progress_sme: 0, in_progress_ev_review: 0,
+    in_progress_ev_pending: 0, in_progress_ev_reassigned: 0,
+    open_gaps: 0, critical_gaps: 0,
+    frameworks_ingested: 0, circulars_ingested: 0, internal_policies: 0,
+    total_sources: 0, ai_auto_approval_rate: 0,
+    control_multiplier: 1.0, total_mappings: 0,
+  };
+
+  // Supplement: live mapping count for accurate multiplier
+  // DB trigger recalculate_metrics() keeps these in sync, but we verify live
+  const { count: mappingCount } = await sb
+    .from('control_framework_mappings')
+    .select('*', { count: 'exact', head: true });
+  const totalMappings = mappingCount ?? 0;
+  m.total_mappings = totalMappings;
+  m.control_multiplier = m.unique_canonical > 0
+    ? parseFloat((totalMappings / m.unique_canonical).toFixed(2))
+    : 1.0;
+
+  // Aggregate total_sources from individual source type counts
+  m.total_sources = (m.frameworks_ingested ?? 0) + (m.circulars_ingested ?? 0) + (m.internal_policies ?? 0);
+
   return m;
 }
 
@@ -93,117 +103,71 @@ export async function fetchMetrics() {
    ============================================================ */
 export async function fetchFrameworks() {
   const { data: viewData, error: viewError } = await sb.from('v_framework_coverage').select('*').order('name');
-  
-  if (!viewError && viewData && viewData.length > 0) {
-    return viewData;
-  }
-  
-  console.log('Calculating framework coverage dynamically...');
-  
-  const { data: frameworks, error: fwError } = await sb.from('frameworks').select('id, name, type');
-  if (fwError || !frameworks) {
-    console.error('fetchFrameworks:', fwError);
+  if (viewError) {
+    console.error('fetchFrameworks view error:', viewError);
     return [];
   }
-  
-  const { data: mappings, error: mapError } = await sb
-    .from('control_framework_mappings')
-    .select('framework_id, control_id, controls!inner(status)');
-  
-  if (mapError || !mappings) {
-    console.error('fetchFrameworks mappings:', mapError);
-    return [];
-  }
-  
-  const coverage = frameworks.map(fw => {
-    const fwMappings = mappings.filter(m => m.framework_id === fw.id);
-    const total = fwMappings.length;
-    
-    if (total === 0) {
-      return {
-        name: fw.name,
-        compliance_status: 'Not Mapped',
-        satisfied_pct: 0,
-        partial_pct: 0,
-        missing_pct: 0,
-        total_controls: 0,
-        satisfied_count: 0,
-        partial_count: 0,
-        missing_count: 0
-      };
-    }
-    
-    const satisfied = fwMappings.filter(m => m.controls.status === 'Active').length;
-    const partial = fwMappings.filter(m => m.controls.status === 'Under Review').length;
-    const missing = total - satisfied - partial;
-    
-    const satisfied_pct = Math.round((satisfied / total) * 100);
-    const partial_pct = Math.round((partial / total) * 100);
-    const missing_pct = 100 - satisfied_pct - partial_pct;
-    
-    let compliance_status = 'Not Compliant';
-    if (satisfied_pct === 100) compliance_status = 'Compliant';
-    else if (satisfied_pct > 0 || partial_pct > 0) compliance_status = 'Partially Compliant';
-    
-    return {
-      name: fw.name,
-      compliance_status,
-      satisfied_pct,
-      partial_pct,
-      missing_pct,
-      total_controls: total,
-      satisfied_count: satisfied,
-      partial_count: partial,
-      missing_count: missing
-    };
-  });
-  
-  return coverage;
+  return viewData || [];
 }
 
 /* ============================================================
    CONTROLS (Unified Control Library)
    ============================================================ */
+// Attach the list of satisfied framework names to each control by joining
+// control_framework_mappings → frameworks (v_controls_full has no framework data).
+async function attachFrameworks(controls) {
+  if (!controls || controls.length === 0) return controls || [];
+  const { data: maps, error } = await sb
+    .from('control_framework_mappings')
+    .select('control_id, frameworks(name)');
+  if (error) { console.error('attachFrameworks:', error); return controls.map(c => ({ ...c, frameworks: [] })); }
+  const byControl = {};
+  (maps || []).forEach(m => {
+    const nm = m.frameworks?.name;
+    if (!nm) return;
+    if (!byControl[m.control_id]) byControl[m.control_id] = new Set();
+    byControl[m.control_id].add(nm);
+  });
+  return controls.map(c => ({
+    ...c,
+    frameworks: byControl[c.id] ? Array.from(byControl[c.id]) : [],
+  }));
+}
+
 export async function fetchControls() {
   const { data: viewData, error: viewError } = await sb.from('v_controls_full').select('*').order('control_code');
-  if (!viewError && viewData) return viewData;
-  
+  if (!viewError && viewData) return attachFrameworks(viewData);
+
   const { data, error } = await sb
     .from('controls')
     .select('*, users(full_name), dh:users!controls_domain_head_id_fkey(full_name)')
     .order('control_code');
   if (error) { console.error('fetchControls:', error); return []; }
-  
-  return data.map(c => ({
+
+  const mapped = data.map(c => ({
     ...c,
     owner_name: c.users?.full_name,
     domain_head_name: c.dh?.full_name
-  })) || [];
+  }));
+  return attachFrameworks(mapped);
 }
 
-/* ============================================================
-   DOMAIN HEAD VIEW (Domain Breakdown)
-   ============================================================ */
-export async function fetchDomainStats() {
-  const { data, error } = await sb
-    .from('controls')
-    .select('*, users(full_name), dh:users!controls_domain_head_id_fkey(full_name)')
-    .order('control_code');
-  if (error) { console.error('fetchDomainStats:', error); return []; }
-  return data.map(c => ({
-    ...c,
-    owner_name: c.users?.full_name,
-    domain_head_name: c.dh?.full_name
-  })) || [];
+export async function fetchControlsIndex() {
+  const { data, error } = await sb.from('controls').select('id, control_code, name, status');
+  if (error) { console.error('fetchControlsIndex:', error); return []; }
+  return data || [];
 }
 
 /* ============================================================
    GAPS (Failed Controls)
    ============================================================ */
 export async function fetchGaps() {
+  // Only show gaps that still need attention — Resolved / Accepted Risk are excluded
+  // so the list and severity counts match the dashboard's open_gaps metric.
   const { data, error } = await sb
     .from('gaps')
     .select('*, controls(control_code, name, status)')
+    .in('status', ['Open', 'In Progress'])
     .order('severity', { ascending: false });
   if (error) { console.error('fetchGaps:', error); return []; }
   return data || [];
@@ -212,6 +176,13 @@ export async function fetchGaps() {
 /* ============================================================
    EVIDENCE MANAGEMENT
    ============================================================ */
+export async function calculateSHA256(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function fetchAllEvidence(controlId = null) {
   let query = sb.from('v_evidence_full').select('*, users!evidence_uploaded_by_fkey(full_name)');
   if (controlId) {
@@ -219,15 +190,6 @@ export async function fetchAllEvidence(controlId = null) {
   }
   const { data, error } = await query.order('upload_date', { ascending: false });
   if (error) { console.error('fetchAllEvidence:', error); return []; }
-  return data || [];
-}
-
-export async function fetchEvidenceForControl(controlId) {
-  const { data, error } = await sb
-    .from('v_evidence_full').select('*')
-    .eq('control_id', controlId)
-    .order('upload_date', { ascending: false });
-  if (error) { console.error('fetchEvidence:', error); return []; }
   return data || [];
 }
 
@@ -245,10 +207,7 @@ export async function uploadEvidence(controlId, file) {
   // Step 1: Calculate SHA-256 BEFORE upload — if crypto fails, abort entirely
   let sha256Hash = null;
   try {
-    const arrayBuffer = await file.arrayBuffer();
-    const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    sha256Hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    sha256Hash = await calculateSHA256(file);
   } catch (hashErr) {
     console.error('SHA-256 hash calculation failed:', hashErr);
   }
@@ -271,7 +230,7 @@ export async function uploadEvidence(controlId, file) {
     file_path:   filePath,
     file_size:   formatFileSize(file.size),
     file_type:   file.type,
-    uploaded_by: CURRENT_USER ? CURRENT_USER.id : null,
+    uploaded_by: getCurrentUser() ? getCurrentUser().id : null,
     status:      'Pending',
     sha256_hash: sha256Hash,
   }).select().single();
@@ -279,11 +238,10 @@ export async function uploadEvidence(controlId, file) {
   return data;
 }
 
-
 export async function approveEvidence(evidenceId) {
   const { data, error } = await sb.from('evidence').update({
     status:      'Approved',
-    reviewed_by: CURRENT_USER ? CURRENT_USER.id : null,
+    reviewed_by: getCurrentUser() ? getCurrentUser().id : null,
     review_date: new Date().toISOString(),
   }).eq('id', evidenceId).select().single();
   if (error) throw error;
@@ -294,10 +252,9 @@ export async function rejectEvidence(evidenceId, rejectionReason, manualRemark) 
   if (!rejectionReason?.trim()) throw new Error('Rejection reason is mandatory');
   const { data, error } = await sb.from('evidence').update({
     status:           'Rejected',
-    reviewed_by:      CURRENT_USER ? CURRENT_USER.id : null,
+    reviewed_by:      getCurrentUser() ? getCurrentUser().id : null,
     review_date:      new Date().toISOString(),
     rejection_reason: rejectionReason,
-    manual_remark:    manualRemark || null,
   }).eq('id', evidenceId).select().single();
   if (error) throw error;
   return data;
@@ -351,26 +308,28 @@ export async function fetchQueue(status = 'Pending') {
 }
 
 export async function approveQueueItem(queueId, justification) {
-  if (!CURRENT_USER) throw new Error('Not authenticated');
+  const user = getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
   const { data, error } = await sb.from('sme_review_queue').update({
     status:      'Approved',
-    reviewed_by: CURRENT_USER.id,
+    reviewed_by: user.id,
     reviewed_at: new Date().toISOString(),
     justification,
-  }).eq('id', queueId).select().single();
+  }).eq('id', queueId).eq('status', 'Pending').select().single();
   if (error) throw error;
   return data;
 }
 
 export async function rejectQueueItem(queueId, justification) {
   if (!justification?.trim()) throw new Error('Justification is mandatory');
-  if (!CURRENT_USER) throw new Error('Not authenticated');
+  const user = getCurrentUser();
+  if (!user) throw new Error('Not authenticated');
   const { data, error } = await sb.from('sme_review_queue').update({
     status:      'Rejected',
-    reviewed_by: CURRENT_USER.id,
+    reviewed_by: user.id,
     reviewed_at: new Date().toISOString(),
     justification,
-  }).eq('id', queueId).select().single();
+  }).eq('id', queueId).eq('status', 'Pending').select().single();
   if (error) throw error;
   return data;
 }
@@ -399,14 +358,30 @@ export async function fetchConflicts() {
   return data || [];
 }
 
+// Update a conflict's lifecycle status (Execute Resolution / Escalate to CISO).
+export async function updateConflictStatus(conflictCode, status, resolutionApplied) {
+  const user = getCurrentUser();
+  const patch = { status };
+  if (resolutionApplied !== undefined && resolutionApplied !== null) patch.resolution_applied = resolutionApplied;
+  if (status === 'Resolved') {
+    patch.resolved_by = user ? user.id : null;
+    patch.resolved_at = new Date().toISOString();
+  }
+  const { data, error } = await sb.from('conflicts')
+    .update(patch).eq('conflict_code', conflictCode).select().single();
+  if (error) throw error;
+  return data;
+}
+
 /* ============================================================
    NOTIFICATIONS
    ============================================================ */
 export async function fetchNotifications() {
-  if (!CURRENT_USER) return [];
+  const user = getCurrentUser();
+  if (!user) return [];
   const { data, error } = await sb
     .from('notifications').select('*')
-    .eq('recipient_id', CURRENT_USER.id)
+    .eq('recipient_id', user.id)
     .order('created_at', { ascending: false })
     .limit(50);
   if (error) { console.error('fetchNotifications:', error); return []; }
@@ -414,10 +389,11 @@ export async function fetchNotifications() {
 }
 
 export async function markAllNotificationsRead() {
-  if (!CURRENT_USER) return;
+  const user = getCurrentUser();
+  if (!user) return;
   await sb.from('notifications')
     .update({ is_read: true })
-    .eq('recipient_id', CURRENT_USER.id)
+    .eq('recipient_id', user.id)
     .eq('is_read', false);
 }
 
@@ -434,11 +410,12 @@ export async function fetchScanInfo() {
    REAL-TIME SUBSCRIPTIONS
    ============================================================ */
 export function subscribeToNotifications(callback) {
-  if (!CURRENT_USER) return null;
+  const user = getCurrentUser();
+  if (!user) return null;
   return sb.channel('notifications')
     .on('postgres_changes', {
       event: 'INSERT', schema: 'public', table: 'notifications',
-      filter: `recipient_id=eq.${CURRENT_USER.id}`,
+      filter: `recipient_id=eq.${user.id}`,
     }, payload => callback(payload.new))
     .subscribe();
 }
@@ -482,6 +459,13 @@ export function formatTimestamp(iso) {
   });
 }
 
+export function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric'
+  });
+}
+
 export function timeAgo(iso) {
   if (!iso) return '—';
   const diff = Date.now() - new Date(iso).getTime();
@@ -494,8 +478,7 @@ export function timeAgo(iso) {
   return 'Just now';
 }
 
-export function showError(message)   { console.error(message); alert('Error: ' + message); }
-export function showSuccess(message) { console.log('✓', message); }
+
 
 /* ============================================================
    AI CLIENT FUNCTIONS — Browser API Callers
@@ -535,6 +518,24 @@ export async function generateGapNarrative(gapId) {
   return callEdgeFunction('gap-narrative', { gap_id: gapId });
 }
 
+// ── Insert a regulatory change record BEFORE calling the edge function ──
+// This is step 1 of the upload pipeline. The edge function needs the DB record's UUID.
+export async function insertRegulatoryChange({ circularId, title, issuer, issuedDate, filePath, sha256Hash }) {
+  const { data, error } = await sb.from('regulatory_changes').insert({
+    circular_id:   circularId,
+    title:         title || circularId,
+    issuer:        issuer || 'Manual Upload',
+    issued_date:   issuedDate || new Date().toISOString().split('T')[0],
+    file_path:     filePath,
+    detected_by:   'Manual',
+    status:        'Active',
+  }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+// ── Run AI regulatory impact analysis (step 2 of upload pipeline) ──
+// Call ONLY after insertRegulatoryChange() has created the DB record.
 export async function runRegulatoryImpact(regulatoryChangeId) {
   return callEdgeFunction('regulatory-impact', {
     regulatory_change_id: regulatoryChangeId,
@@ -569,20 +570,4 @@ export async function runAutoMapping(frameworkId, clauses) {
 
 export async function triggerWebScraper() {
   return callEdgeFunction('web-scraper', {});
-}
-
-export function setAILoading(buttonEl, loading, originalText) {
-  if (loading) {
-    buttonEl.disabled = true;
-    buttonEl.textContent = '🤖 AI working…';
-  } else {
-    buttonEl.disabled = false;
-    buttonEl.textContent = originalText;
-  }
-}
-
-export function renderAIVerdict(verdict) {
-  if (!verdict) return '<span style="font-size:11px;color:var(--text-tertiary);font-style:italic">Pending AI analysis…</span>';
-  const colors = { Sufficient: 'green', Partial: 'amber', Insufficient: 'red' };
-  return `<span class="badge badge-${colors[verdict] || 'gray'}">${verdict}</span>`;
 }

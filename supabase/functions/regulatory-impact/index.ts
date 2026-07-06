@@ -127,14 +127,25 @@ Be precise about which control codes match which circular sections.`
     }).eq('id', regulatory_change_id)
 
     // 6. Create new gaps for unmatched clauses
-    for (const clause of result.unmatched_clauses) {
-      const gapCode = `GAP-${regChange.circular_id.replace(/[^A-Z0-9]/g, '')}-${Date.now()}`
-      await supabase.from('gaps').insert({
-        gap_code:    gapCode,
-        severity:    clause.severity,
-        description: clause.description,
-        status:      'Open',
+    for (const clause of (result.unmatched_clauses || [])) {
+      const gapCode = `GAP-${regChange.circular_id.replace(/[^A-Z0-9]/g, '')}-${Date.now()}-${Math.floor(Math.random() * 1000)}`
+      const rawSev = (clause.severity || 'medium').toLowerCase().trim();
+      const validSevs = ['critical', 'high', 'medium', 'low'];
+      const finalSev = validSevs.includes(rawSev) ? rawSev : 'medium';
+      // description is NOT NULL — fall back through clause_text / reference so a
+      // model that omits `description` can't null out the row (and abort the batch).
+      const description = clause.description || clause.clause_text
+        || `Unmatched clause ${clause.clause_reference || ''}`.trim();
+
+      const { error: gapErr } = await supabase.from('gaps').insert({
+        gap_code:     gapCode,
+        clause_ref:   clause.clause_reference || '—',
+        clause_text:  clause.clause_text || null,
+        severity:     finalSev,
+        description,
+        status:       'Open',
       })
+      if (gapErr) console.error(`Failed to insert gap for clause ${clause.clause_reference}:`, gapErr.message)
     }
 
     // 7. Notify Compliance Lead and CISO

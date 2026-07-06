@@ -48,7 +48,7 @@ CREATE TABLE public.frameworks (
 CREATE TABLE public.domains (
   id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name           TEXT NOT NULL UNIQUE,
-  domain_head_id UUID REFERENCES public.users(id),
+  domain_head_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   description    TEXT,
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
@@ -60,15 +60,15 @@ CREATE TABLE public.controls (
   name             TEXT NOT NULL,
   description      TEXT NOT NULL,
   canonical_text   TEXT,
-  domain_id        UUID REFERENCES public.domains(id),
-  owner_id         UUID REFERENCES public.users(id),
-  domain_head_id   UUID REFERENCES public.users(id),
+  domain_id        UUID REFERENCES public.domains(id) ON DELETE SET NULL,
+  owner_id         UUID REFERENCES public.users(id) ON DELETE SET NULL,
+  domain_head_id   UUID REFERENCES public.users(id) ON DELETE SET NULL,
   status           TEXT DEFAULT 'Active' CHECK (status IN ('Active','Failed','Under Review','Updated','Rejected','Pending')),
   status_reason    TEXT,
   confidence_score NUMERIC(4,3),
   multiplier       NUMERIC(4,2),
   is_canonical     BOOLEAN DEFAULT FALSE,
-  parent_control_id UUID REFERENCES public.controls(id),
+  parent_control_id UUID REFERENCES public.controls(id) ON DELETE SET NULL,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
 );
@@ -83,7 +83,7 @@ CREATE TABLE public.control_framework_mappings (
   confidence_score NUMERIC(4,3),
   rationale        TEXT,
   status           TEXT DEFAULT 'Auto-Approved' CHECK (status IN ('Auto-Approved','SME-Approved','SME-Rejected','Pending-Review')),
-  approved_by      UUID REFERENCES public.users(id),
+  approved_by      UUID REFERENCES public.users(id) ON DELETE SET NULL,
   approved_at      TIMESTAMPTZ,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(control_id, framework_id, clause_ref)
@@ -93,17 +93,17 @@ CREATE TABLE public.control_framework_mappings (
 CREATE TABLE public.sme_review_queue (
   id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   mapping_id       TEXT NOT NULL,
-  control_id_a     UUID NOT NULL REFERENCES public.controls(id),
-  control_id_b     UUID,
-  framework_id     UUID REFERENCES public.frameworks(id),
+  control_id_a     UUID NOT NULL REFERENCES public.controls(id) ON DELETE CASCADE,
+  control_id_b     UUID REFERENCES public.controls(id) ON DELETE CASCADE,
+  framework_id     UUID REFERENCES public.frameworks(id) ON DELETE CASCADE,
   clause_ref       TEXT,
   confidence_score NUMERIC(4,3) NOT NULL,
   ai_rationale     TEXT,
   status           TEXT DEFAULT 'Pending' CHECK (status IN ('Pending','Approved','Rejected','Edited','Reassigned')),
-  reviewed_by      UUID REFERENCES public.users(id),
+  reviewed_by      UUID REFERENCES public.users(id) ON DELETE SET NULL,
   reviewed_at      TIMESTAMPTZ,
   justification    TEXT,
-  assigned_to      UUID REFERENCES public.users(id),
+  assigned_to      UUID REFERENCES public.users(id) ON DELETE SET NULL,
   assigned_at      TIMESTAMPTZ,
   expires_at       TIMESTAMPTZ,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
@@ -130,7 +130,7 @@ CREATE TRIGGER trg_set_sme_expiry
 CREATE TABLE public.gaps (
   id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   gap_code             TEXT NOT NULL UNIQUE,
-  framework_id         UUID REFERENCES public.frameworks(id),
+  framework_id         UUID REFERENCES public.frameworks(id) ON DELETE CASCADE,
   clause_ref           TEXT NOT NULL,
   clause_text          TEXT,
   severity             TEXT NOT NULL CHECK (severity IN ('critical','high','medium','low')),
@@ -140,7 +140,7 @@ CREATE TABLE public.gaps (
   benefit_if_resolved  TEXT,
   impact_category      TEXT[],
   status               TEXT DEFAULT 'Open' CHECK (status IN ('Open','In Progress','Resolved','Accepted Risk')),
-  assigned_to          UUID REFERENCES public.users(id),
+  assigned_to          UUID REFERENCES public.users(id) ON DELETE SET NULL,
   target_date          DATE,
   resolved_at          TIMESTAMPTZ,
   created_at           TIMESTAMPTZ DEFAULT NOW(),
@@ -155,10 +155,10 @@ CREATE TABLE public.evidence (
   file_path        TEXT NOT NULL,
   file_size        TEXT,
   file_type        TEXT,
-  uploaded_by      UUID NOT NULL REFERENCES public.users(id),
+  uploaded_by      UUID REFERENCES public.users(id) ON DELETE SET NULL,
   upload_date      TIMESTAMPTZ DEFAULT NOW(),
   status           TEXT DEFAULT 'Pending' CHECK (status IN ('Pending','Under Review','Approved','Rejected','Reassigned')),
-  reviewed_by      UUID REFERENCES public.users(id),
+  reviewed_by      UUID REFERENCES public.users(id) ON DELETE SET NULL,
   review_date      TIMESTAMPTZ,
   manual_remark    TEXT,
   ai_verdict       TEXT,
@@ -167,7 +167,7 @@ CREATE TABLE public.evidence (
   ai_red_flags     TEXT,
   observations     TEXT,
   rejection_reason TEXT,
-  reassigned_to    UUID REFERENCES public.users(id),
+  reassigned_to    UUID REFERENCES public.users(id) ON DELETE SET NULL,
   sha256_hash      TEXT,
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -179,7 +179,7 @@ CREATE TABLE public.evidence_timeline (
   evidence_id  UUID NOT NULL REFERENCES public.evidence(id) ON DELETE CASCADE,
   action       TEXT NOT NULL,
   action_type  TEXT NOT NULL CHECK (action_type IN ('info','warning','success','danger')),
-  performed_by UUID REFERENCES public.users(id),
+  performed_by UUID REFERENCES public.users(id) ON DELETE SET NULL,
   performed_at TIMESTAMPTZ DEFAULT NOW(),
   notes        TEXT
 );
@@ -396,11 +396,6 @@ $$ LANGUAGE SQL SECURITY DEFINER STABLE;
 CREATE OR REPLACE FUNCTION public.get_user_domain()
 RETURNS TEXT AS $$
   SELECT domain FROM public.users WHERE id = auth.uid();
-$$ LANGUAGE SQL SECURITY DEFINER STABLE;
-
-CREATE OR REPLACE FUNCTION public.get_user_tenant_id()
-RETURNS UUID AS $$
-  SELECT tenant_id FROM public.users WHERE id = auth.uid();
 $$ LANGUAGE SQL SECURITY DEFINER STABLE;
 
 
@@ -799,111 +794,26 @@ CREATE TRIGGER trg_sync_evidence_to_control
   FOR EACH ROW EXECUTE FUNCTION public.sync_evidence_to_control();
 
 
+
 -- ============================================================
--- SEED DATA  (real starting data — not dummy)
+-- PRODUCTION SCHEMA CONTAINS NO SEED DATA
+-- ============================================================
+-- This file defines ONLY the database structure (DDL).
+-- All INSERT statements have been moved to: sql/seed-demo.sql
+--
+-- Production installations start completely clean.
+-- Every value the platform displays must originate from:
+--   1. Uploaded regulatory documents (via Ingest page)
+--   2. AI-generated analysis (via Edge Functions)
+--   3. User actions (approvals, assignments, evidence uploads)
+--
+-- To seed a DEMO / STAGING environment: run sql/seed-demo.sql
 -- ============================================================
 
--- One metrics row (triggers will keep it live from here)
-INSERT INTO public.metrics DEFAULT VALUES;
+-- Structural singleton: required by recalculate_metrics() trigger
+INSERT INTO public.metrics DEFAULT VALUES
+ON CONFLICT DO NOTHING;
 
--- Frameworks
-INSERT INTO public.frameworks (name, type, version, issuer, satisfied_pct, partial_pct, missing_pct, compliance_status, status) VALUES
-('ISO 27001',       'Framework',       '2022', 'ISO',     88, 0,  12, 'Compliant',           'Loaded'),
-('SOX',             'Framework',       '2024', 'PCAOB',   91, 0,  9,  'Compliant',           'Loaded'),
-('NIST CSF',        'Framework',       '2.0',  'NIST',    72, 10, 18, 'Partially Compliant', 'Loaded'),
-('RBI CSF',         'Circular',        'v2',   'RBI',     60, 16, 24, 'Partially Compliant', 'Loaded'),
-('PCI-DSS',         'Framework',       '4.0',  'PCI SSC', 55, 15, 30, 'Not Compliant',       'Loaded'),
-('COBIT',           'Framework',       '2019', 'ISACA',   50, 14, 36, 'Not Compliant',       'Loaded'),
-('Internal Policy', 'Internal Policy', 'v3',   'Internal',90, 5,  5,  'Compliant',           'Loaded');
-
--- Domains
-INSERT INTO public.domains (name, description) VALUES
-('Access Control',    'Controls related to user access, identity, and privilege management'),
-('Privileged Access', 'Controls for privileged and administrative account management'),
-('Incident Mgmt',     'Controls for incident detection, response, and recovery'),
-('Data Protection',   'Controls for data encryption, classification, and retention'),
-('Change Mgmt',       'Controls for change management and configuration control'),
-('Risk Management',   'Controls for risk assessment and treatment'),
-('Vendor Management', 'Controls for third-party and vendor risk');
-
--- Scan info
-INSERT INTO public.scan_info (scan_type, status, completed_at, next_scheduled_at) VALUES
-('circular_scan',    'up-to-date', NOW() - INTERVAL '10 hours', NOW() + INTERVAL '14 hours'),
-('compliance_eval',  'up-to-date', NOW() - INTERVAL '1 day',    NOW() + INTERVAL '23 hours'),
-('scheduled_scrape', 'pending',    NULL,                          NOW() + INTERVAL '14 hours');
-
--- Regulatory changes
-INSERT INTO public.regulatory_changes (circular_id, title, issuer, issued_date, total_impacted, total_gaps_created, status, detected_by) VALUES
-('RBI/2024-25/112', 'Cyber Resilience Framework Update',  'RBI',     '2025-04-12', 23, 3, 'Active',    'Web Scraper'),
-('PCI-DSS-v4.0.1',  'PCI-DSS v4.0.1 Section 6 Update',   'PCI SSC', '2025-03-01', 11, 0, 'Remediated','Manual'),
-('ISO-27001-2022',  'ISO 27001:2022 Annex A Update',      'ISO',     '2025-01-15', 8,  0, 'Remediated','Manual');
-
--- Conflicts
-INSERT INTO public.conflicts
-  (conflict_code, title, policy_ref_1, requirement_1, policy_ref_2, requirement_2, status, partial_status, explanation, suggested_resolution)
-VALUES
-(
-  'CONF-001', 'Data retention period conflict',
-  'ISO 27001 A.8.10', '3-year retention minimum',
-  'RBI CSF 5.4.2',    '5-year retention minimum',
-  'Conflict Detected',
-  'Compliant with ISO 27001, Non-compliant with RBI CSF',
-  'ISO requires minimum 3-year data retention while RBI mandates 5 years. Internal policy currently aligned to 3 years, creating a compliance gap against RBI.',
-  'Align internal policy to 5-year retention to satisfy both frameworks simultaneously.'
-),
-(
-  'CONF-002', 'BCP testing frequency conflict',
-  'ISO 27001 A.17.1', 'Annual BCP test',
-  'RBI CSF 6.3',      'Biannual BCP test',
-  'Conflict Detected',
-  'Compliant with ISO 27001, Non-compliant with RBI CSF',
-  'ISO requires annual BCP testing. RBI requires biannual (every 6 months). Current practice is annual only.',
-  'Increase BCP testing to biannual cadence to satisfy RBI without violating ISO.'
-);
-
--- Gaps (matches DATA.gaps in data.js exactly)
-INSERT INTO public.gaps (gap_code, clause_ref, severity, description, why_critical, impact_if_unresolved, benefit_if_resolved, impact_category, status) VALUES
-('CC-0287', 'COBIT-BAI06', 'critical', 'Change management approval — ITSM audit trail export failed during last compliance run',
- 'Critical control gap identified in unified library. ITSM tool integration failure prevents audit trail generation.',
- 'Regulatory penalty, supervisory observation letter, reputational damage.',
- 'Closes critical gap; demonstrates proactive cyber governance to regulators.',
- ARRAY['Financial','Reputational'], 'Open'),
-
-('CC-0400', 'RBI-4.2.1', 'critical', 'Cyber crisis management plan — no documented plan exists for cyber-specific crisis scenarios',
- 'RBI mandates a documented cyber crisis management plan. No current plan exists, creating a direct regulatory gap.',
- 'RBI supervisory action, potential enforcement notice, inability to respond to cyber crisis.',
- 'Closes critical RBI requirement; enables structured incident response.',
- ARRAY['Regulatory','Reputational'], 'Open'),
-
-('CC-0401', 'NIST-RS.CO-3', 'high', 'Incident communication plan — no formal communication protocol for security incidents',
- 'No documented protocol exists for communicating security incidents to internal and external stakeholders.',
- 'Delayed response, reputational damage, potential regulatory non-compliance.',
- 'Reduces incident response time; demonstrates mature security governance.',
- ARRAY['Reputational','Non-financial'], 'Open'),
-
-('CC-0402', 'PCI-DSS-6.3.3', 'high', 'Patch management SLA — no formal SLA defined for critical vulnerability remediation',
- 'PCI-DSS 6.3.3 requires defined timelines for applying security patches. No SLA currently documented.',
- 'PCI-DSS non-compliance, increased vulnerability exposure, potential data breach.',
- 'Reduces attack surface; demonstrates PCI compliance to assessors.',
- ARRAY['Financial','Regulatory'], 'Open'),
-
-('CC-0403', 'ISO-A.8.16', 'high', 'Monitoring activities — no automated alerting for anomalous access patterns',
- 'ISO 27001 A.8.16 requires monitoring and alerting capabilities. Current monitoring is manual and incomplete.',
- 'Delayed detection of security incidents, increased breach impact.',
- 'Enables rapid detection of threats; reduces mean time to respond.',
- ARRAY['Non-financial','Reputational'], 'Open'),
-
-('CC-0404', 'COBIT-DSS05', 'medium', 'Vendor access review — no periodic review of third-party system access',
- 'Vendor accounts are not periodically reviewed for appropriateness, creating privilege accumulation risk.',
- 'Unauthorized access by former vendor personnel, potential data exposure.',
- 'Reduces third-party risk; demonstrates vendor governance to auditors.',
- ARRAY['Financial','Non-financial'], 'Open'),
-
-('CC-0405', 'RBI-7.2', 'low', 'Security awareness training — training completion not tracked centrally',
- 'RBI requires documented evidence of security awareness training. No central tracking exists.',
- 'Unable to demonstrate regulatory compliance during supervisory review.',
- 'Closes audit finding; demonstrates workforce security awareness.',
- ARRAY['Non-financial'], 'Open');
 
 -- ============================================================
 -- YOUR USER RECORD
@@ -919,3 +829,5 @@ INSERT INTO public.gaps (gap_code, clause_ref, severity, description, why_critic
 --   NULL,
 --   'SS'
 -- );
+
+

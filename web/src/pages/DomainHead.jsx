@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { DATA } from '../data';
-import { fetchDomainStats, fetchAllEvidence, fetchGaps, approveEvidence, rejectEvidence } from '../supabaseClient';
+
+import { fetchControls, fetchAllEvidence, fetchGaps, approveEvidence, rejectEvidence } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 import RemarkBlock from '../components/RemarkBlock';
+import PageLoader from '../components/PageLoader';
 
 export default function DomainHead({ onNavigate }) {
   const [domains, setDomains] = useState([]);
@@ -13,10 +14,10 @@ export default function DomainHead({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [expandedDomains, setExpandedDomains] = useState({});
 
-  const loadData = async () => {
+  const loadData = async (isMounted = true) => {
     try {
       const [controlsRaw, allEvidence, allGaps] = await Promise.all([
-        fetchDomainStats(),
+        fetchControls(),
         fetchAllEvidence(),
         fetchGaps(),
       ]);
@@ -58,16 +59,27 @@ export default function DomainHead({ onNavigate }) {
         dStats[key].controls.push(c);
       });
 
-      setDomains(Object.values(dStats));
+      if (isMounted) {
+        setDomains(Object.values(dStats));
+      }
     } catch (err) {
       console.error('Error loading Domain Head View:', err);
     } finally {
-      setLoading(false);
+      if (isMounted) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadData();
+    let isMounted = true;
+    const load = async () => {
+      await loadData(isMounted);
+    };
+    load();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleApprove = async (evidenceId) => {
@@ -93,7 +105,7 @@ export default function DomainHead({ onNavigate }) {
   };
 
   if (loading) {
-    return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Domain Head View...</div>;
+    return <PageLoader message="Loading domain coverage view..." />;
   }
 
   const totalActive      = domains.reduce((s, d) => s + d.active, 0);
