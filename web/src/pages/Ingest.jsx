@@ -128,7 +128,22 @@ export default function Ingest() {
 
     } catch (err) {
       console.error('Manual ingestion failed:', err);
-      setErrorMessage(err.message || 'Error occurred during manual ingestion.');
+      
+      // Extract detailed error from Supabase context response if available
+      let detailedMsg = err.message || 'Error occurred during manual ingestion.';
+      if (err.context && typeof err.context.json === 'function') {
+        try {
+          const errBody = await err.context.json();
+          if (errBody?.error) detailedMsg = errBody.error;
+        } catch {
+          try {
+            const errText = await err.context.text();
+            if (errText) detailedMsg = errText;
+          } catch {}
+        }
+      }
+      
+      setErrorMessage(detailedMsg);
     } finally {
       setUploading(false);
       setUploadProgress('');
