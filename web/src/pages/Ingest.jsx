@@ -96,7 +96,7 @@ export default function Ingest() {
           issued_date:     new Date().toISOString().split('T')[0],
           file_path:       filePath,
           status:          'In review',
-          detected_by:     CURRENT_USER ? CURRENT_USER.full_name : 'Compliance Officer'
+          detected_by:     'Manual' // Satisfies the database CHECK constraint: IN ('Manual', 'Web Scraper')
         })
         .select()
         .single();
