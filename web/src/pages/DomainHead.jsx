@@ -32,17 +32,8 @@ export default function DomainHead({ onNavigate }) {
       });
       setEvidenceByControl(evMap);
 
-      const source = controlsRaw.length ? controlsRaw : DATA.controls.map(c => ({
-        id:               null,
-        control_code:     c.id,
-        name:             c.name,
-        domain_name:      c.domain,
-        domain_head_name: c.domainHead,
-        owner_name:       c.owner,
-        status:           c.status,
-        status_reason:    c.reason,
-        confidence_score: c.confidence,
-      }));
+      const source = controlsRaw.length ? controlsRaw : [];
+
 
       setTotalControlsCount(source.length);
 
@@ -155,8 +146,10 @@ export default function DomainHead({ onNavigate }) {
         <div className="card-title">Domain Head Overview</div>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-          {domains.map((d, idx) => {
-            const isExpanded = expandedDomains[d.name];
+          {domains.length > 0 ? (
+            domains.map((d, idx) => {
+              const isExpanded = expandedDomains[d.name];
+
 
             return (
               <div key={idx} style={{ borderBottom: '1px solid var(--border-t)', paddingBottom: isExpanded ? '14px' : '0' }}>
@@ -253,9 +246,15 @@ export default function DomainHead({ onNavigate }) {
                 )}
               </div>
             );
-          })}
+          })
+        ) : (
+          <div style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+            No compliance domains or controls registered yet. Ingest a circular to begin.
+          </div>
+        )}
         </div>
       </div>
+
     </>
   );
 }

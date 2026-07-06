@@ -51,15 +51,8 @@ export default function Evidence({ controlId }) {
         owner:       c.owner_name || '—',
         domainHead:  c.domain_head_name || '—',
         status:      c.status,
-      })) : DATA.controls.map(c => ({
-        id:          c.id,
-        control_code: c.id,
-        name:        c.name,
-        domain:      c.domain,
-        owner:       c.owner,
-        domainHead:  c.domainHead,
-        status:      c.status,
-      }));
+      })) : [];
+
 
       const evidenceByControlId = {};
       allEvidence.forEach(ev => {
@@ -298,8 +291,10 @@ export default function Evidence({ controlId }) {
 
       {/* Folders List */}
       <div id="evidence-folders-list">
-        {filteredFolders.map((ev) => {
-          const isExpanded = expandedFolders[ev.controlId];
+        {filteredFolders.length > 0 ? (
+          filteredFolders.map((ev) => {
+            const isExpanded = expandedFolders[ev.controlId];
+
           const isTimelineLoading = timelineLoading[ev.controlId];
           const timelineItems = timelines[ev.controlId] || [];
           const isUploading = uploading[ev.controlId];
@@ -437,7 +432,16 @@ export default function Evidence({ controlId }) {
               )}
             </div>
           );
-        })}
+          })
+        ) : (
+          <div className="card" style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-secondary)', borderStyle: 'dashed' }}>
+            <div style={{ fontSize: '24px', marginBottom: '8px' }}>📂</div>
+            <div style={{ fontSize: '13px', fontWeight: 600 }}>No controls or evidence folders generated yet</div>
+            <div style={{ fontSize: '10.5px', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+              Upload your first regulatory standard or policy in the Ingestion tab to dynamically populate evidence folders.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Access Log Monitoring */}

@@ -38,12 +38,8 @@ export default function Regulatory() {
             impactedIds:     impactedIds,
             unmatched:       r.unmatched_clauses || [],
           };
-        }) : DATA.regulatory.map(r => ({
-          ...r,
-          impactedIds: [],
-          unmatched: [],
-          status: r.gaps > 0 ? 'In review' : 'Remediated'
-        }));
+        }) : [];
+
 
         setChanges(mappedChanges);
         if (mappedChanges.length > 0) {
@@ -80,24 +76,33 @@ export default function Regulatory() {
               </tr>
             </thead>
             <tbody>
-              {changes.map((r) => (
-                <tr key={r.id} className="clickable" onClick={() => setSelectedId(r.id)} style={selectedId === r.id ? { background: 'rgba(255, 255, 255, 0.03)' } : {}}>
-                  <td>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{r.id}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{r.title}</div>
-                  </td>
-                  <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.date}</td>
-                  <td style={{ fontSize: '12px' }}>
-                    <span style={{ fontWeight: 600, color: 'var(--accent-gold-lt)' }}>{r.impactedControls} controls</span>
-                    {r.gaps > 0 && <span style={{ color: 'var(--text-danger)', marginLeft: '6px' }}>({r.gaps} gaps)</span>}
-                  </td>
-                  <td>
-                    <button className="btn btn-sm btn-info" onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); }}>
-                      View Impact Details
-                    </button>
+              {changes.length > 0 ? (
+                changes.map((r) => (
+                  <tr key={r.id} className="clickable" onClick={() => setSelectedId(r.id)} style={selectedId === r.id ? { background: 'rgba(255, 255, 255, 0.03)' } : {}}>
+                    <td>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{r.id}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '2px' }}>{r.title}</div>
+                    </td>
+                    <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{r.date}</td>
+                    <td style={{ fontSize: '12px' }}>
+                      <span style={{ fontWeight: 600, color: 'var(--accent-gold-lt)' }}>{r.impactedControls} controls</span>
+                      {r.gaps > 0 && <span style={{ color: 'var(--text-danger)', marginLeft: '6px' }}>({r.gaps} gaps)</span>}
+                    </td>
+                    <td>
+                      <button className="btn btn-sm btn-info" onClick={(e) => { e.stopPropagation(); setSelectedId(r.id); }}>
+                        View Impact Details
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="4" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+                    No regulatory changes or circulars ingested yet.
                   </td>
                 </tr>
-              ))}
+              )}
+
             </tbody>
           </table>
         </div>

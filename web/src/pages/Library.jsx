@@ -28,10 +28,11 @@ export default function Library({ onNavigate }) {
           fetchMetrics(),
         ]);
 
-        const mappedControls = controlsRaw.length ? controlsRaw.map(c => ({
+        // Use database controls only; do not fall back to DATA.controls if empty (Q22-A / Zero-state alignment)
+        const mappedControls = controlsRaw && controlsRaw.length > 0 ? controlsRaw.map(c => ({
           id:          c.control_code,
           name:        c.name,
-          domain:      c.domain_name,
+          domain:      c.domain_name || 'Unassigned',
           description: c.description,
           frameworks:  c.frameworks || [],
           extra:       c.extra || [],
@@ -40,7 +41,7 @@ export default function Library({ onNavigate }) {
           status:      c.status,
           confidence:  c.confidence_score ?? 0.85,
           reason:      c.status_reason || '—',
-        })) : DATA.controls;
+        })) : [];
 
         setControls(mappedControls);
         setMetrics(metricsRaw);
@@ -58,10 +59,12 @@ export default function Library({ onNavigate }) {
   }
 
   const total = controls.length;
-  const metricTotal = metrics ? (metrics.unique_canonical || total) : total;
-  const autoRate = metrics ? Math.round(metrics.ai_auto_approval_rate || 0) : Math.round(DATA.metrics.aiAutoApprovalRate);
+  
+  // Use Nullish Coalescing (??) to prevent 0 falling back to DATA
+  const metricTotal = metrics ? (metrics.unique_canonical ?? total) : total;
+  const autoRate = metrics ? Math.round(metrics.ai_auto_approval_rate ?? 0) : 0;
   const approved = Math.round((autoRate / 100) * metricTotal);
-  const smeQueue = metrics ? (metrics.in_progress_sme || 0) : DATA.metrics.inProgress.pendingSME;
+  const smeQueue = metrics ? (metrics.in_progress_sme ?? 0) : 0;
 
   const domColors = {
     'Access Control': 'blue',
@@ -73,9 +76,9 @@ export default function Library({ onNavigate }) {
 
   const filtered = controls.filter(c => {
     const sTerm = search.toLowerCase();
-    const matchSearch = !search || c.name.toLowerCase().includes(sTerm) || c.id.toLowerCase().includes(sTerm) || c.domain.toLowerCase().includes(sTerm);
+    const matchSearch = !search || c.name.toLowerCase().includes(sTerm) || c.id.toLowerCase().includes(sTerm) || (c.domain && c.domain.toLowerCase().includes(sTerm));
     const matchFw     = !fwFilter || (c.frameworks || []).some(f => f.toLowerCase().includes(fwFilter.toLowerCase()));
-    const matchDomain = !domainFilter || c.domain.toLowerCase().includes(domainFilter.toLowerCase());
+    const matchDomain = !domainFilter || (c.domain && c.domain.toLowerCase().includes(domainFilter.toLowerCase()));
     const matchStatus = !statusFilter || c.status.toLowerCase().includes(statusFilter.toLowerCase());
     return matchSearch && matchFw && matchDomain && matchStatus;
   });
@@ -129,8 +132,8 @@ export default function Library({ onNavigate }) {
           <select className="filter-select" value={fwFilter} onChange={(e) => setFwFilter(e.target.value)}>
             <option value="">All frameworks</option>
             <option value="ISO 27001">ISO 27001</option>
-            <option value="NIST CSF">NIST CSF</option>
-            <option value="RBI CSF">RBI CSF</option>
+            <option value="NIST">NIST</option>
+            <option value="RBI">RBI</option>
             <option value="SOX">SOX</option>
           </select>
           <select className="filter-select" value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)}>
@@ -166,57 +169,65 @@ export default function Library({ onNavigate }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => {
-                const isExtraExpanded = expandedExtras[c.id];
-                const isReasonExpanded = expandedReasons[c.id];
+              {filtered.length > 0 ? (
+                filtered.map((c) => {
+                  const isExtraExpanded = expandedExtras[c.id];
+                  const isReasonExpanded = expandedReasons[c.id];
 
-                return (
-                  <tr key={c.id}>
-                    <td>
-                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-gold-lt)', fontWeight: 'bold' }}>{c.id}</div>
-                      <div style={{ fontSize: '12px', fontWeight: 600, marginTop: '2px', color: 'var(--text-primary)' }}>{c.name}</div>
-                    </td>
-                    <td style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{c.description}</td>
-                    <td>
-                      <Badge text={c.domain} color={domColors[c.domain] || 'gray'} />
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{c.domainHead}</div>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                        {(c.frameworks || []).map((f, i) => <Badge key={i} text={f} color="green" />)}
-                      </div>
-                      {(c.extra || []).length > 0 && (
-                        <div style={{ marginTop: '4px' }}>
-                          <span className="ctrl-expand" onClick={() => toggleExtra(c.id)}>
-                            {isExtraExpanded ? '− Show less' : `+ ${c.extra.length} more frameworks`}
-                          </span>
-                          {isExtraExpanded && (
-                            <div className="ctrl-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '6px' }}>
-                              {c.extra.map((f, i) => <Badge key={i} text={f} color="blue" />)}
-                            </div>
-                          )}
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: 'var(--accent-gold-lt)', fontWeight: 'bold' }}>{c.id}</div>
+                        <div style={{ fontSize: '12px', fontWeight: 600, marginTop: '2px', color: 'var(--text-primary)' }}>{c.name}</div>
+                      </td>
+                      <td style={{ fontSize: '11px', color: 'var(--text-secondary)', lineHeight: '1.5' }}>{c.description}</td>
+                      <td>
+                        <Badge text={c.domain} color={domColors[c.domain] || 'gray'} />
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>{c.domainHead}</div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                          {(c.frameworks || []).map((f, i) => <Badge key={i} text={f} color="green" />)}
                         </div>
-                      )}
-                    </td>
-                    <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{c.owner}</td>
-                    <td><ConfPill value={c.confidence} /></td>
-                    <td><StatusBadge status={c.status} /></td>
-                    <td>
-                      <button className="btn-sm" onClick={() => onNavigate('evidence', { controlId: c.id })}>
-                        Files
-                      </button>
-                    </td>
-                    <td>
-                      <span className="ctrl-expand" onClick={() => toggleReason(c.id)}>
-                        {isReasonExpanded ? 'Hide' : 'Reason'}
-                      </span>
-                      {isReasonExpanded && (
-                        <div className="ctrl-sub" style={{ fontSize: '10px', lineHeight: '1.4', color: 'var(--text-secondary)' }}>{c.reason}</div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                        {(c.extra || []).length > 0 && (
+                          <div style={{ marginTop: '4px' }}>
+                            <span className="ctrl-expand" onClick={() => toggleExtra(c.id)}>
+                              {isExtraExpanded ? '− Show less' : `+ ${c.extra.length} more frameworks`}
+                            </span>
+                            {isExtraExpanded && (
+                              <div className="ctrl-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '6px' }}>
+                                {c.extra.map((f, i) => <Badge key={i} text={f} color="blue" />)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{c.owner}</td>
+                      <td><ConfPill value={c.confidence} /></td>
+                      <td><StatusBadge status={c.status} /></td>
+                      <td>
+                        <button className="btn-sm" onClick={() => onNavigate('evidence', { controlId: c.id })}>
+                          Files
+                        </button>
+                      </td>
+                      <td>
+                        <span className="ctrl-expand" onClick={() => toggleReason(c.id)}>
+                          {isReasonExpanded ? 'Hide' : 'Reason'}
+                        </span>
+                        {isReasonExpanded && (
+                          <div className="ctrl-sub" style={{ fontSize: '10px', lineHeight: '1.4', color: 'var(--text-secondary)' }}>{c.reason}</div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-tertiary)', fontSize: '12.5px' }}>
+                    No compliance controls mapped yet. Ingest your first document to dynamically build this library.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

@@ -25,7 +25,8 @@ export default function Gaps() {
           impact:   g.impact_if_unresolved || 'Impact being evaluated.',
           benefit:  g.benefit_if_resolved || 'Benefit being evaluated.',
           category: Array.isArray(g.impact_category) ? g.impact_category : ['Non-financial'],
-        })) : DATA.gaps;
+        })) : [];
+
 
         setGaps(mappedGaps);
       } catch (err) {
@@ -104,36 +105,43 @@ export default function Gaps() {
 
         {/* Gaps List */}
         <div id="gap-list" style={{ display: 'flex', flexDirection: 'column' }}>
-          {filteredGaps.map((g) => {
-            const isExpanded = expandedGaps[g.id];
-            const borderColor = g.sev === 'critical' ? 'var(--text-danger)'
-              : g.sev === 'high' ? 'var(--text-warning)'
-              : g.sev === 'medium' ? 'var(--text-info)' : 'var(--text-success)';
+          {filteredGaps.length > 0 ? (
+            filteredGaps.map((g) => {
+              const isExpanded = expandedGaps[g.id];
+              const borderColor = g.sev === 'critical' ? 'var(--text-danger)'
+                : g.sev === 'high' ? 'var(--text-warning)'
+                : g.sev === 'medium' ? 'var(--text-info)' : 'var(--text-success)';
 
-            return (
-              <div key={g.id} data-sev={g.sev} style={{ borderBottom: '1px solid var(--border-t)' }}>
-                <div className="gap-row" onClick={() => toggleGapExpand(g.id)} style={{ borderLeft: isExpanded ? `3px solid ${borderColor}` : '', paddingLeft: isExpanded ? '12px' : '6px' }}>
-                  <div className="gap-id">{g.id}</div>
-                  <div className="gap-desc">{g.desc}</div>
-                  <Badge text={g.sev.toUpperCase()} color={sevColor[g.sev]} />
-                  <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: '12px' }}>
-                    {isExpanded ? '▼' : '▶'}
-                  </span>
-                </div>
-                {isExpanded && (
-                  <div className="gap-expand" style={{ borderLeftColor: borderColor }}>
-                    <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Why marked {g.sev}:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.why}</span></div>
-                    <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Business Impact if unresolved:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.impact}</span></div>
-                    <div style={{ marginBottom: '12px' }}><strong style={{ color: 'var(--text-primary)' }}>Resolution Benefit:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.benefit}</span></div>
-                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {g.category.map((c, i) => <Badge key={i} text={c} color="gray" />)}
-                    </div>
+              return (
+                <div key={g.id} data-sev={g.sev} style={{ borderBottom: '1px solid var(--border-t)' }}>
+                  <div className="gap-row" onClick={() => toggleGapExpand(g.id)} style={{ borderLeft: isExpanded ? `3px solid ${borderColor}` : '', paddingLeft: isExpanded ? '12px' : '6px' }}>
+                    <div className="gap-id">{g.id}</div>
+                    <div className="gap-desc">{g.desc}</div>
+                    <Badge text={g.sev.toUpperCase()} color={sevColor[g.sev]} />
+                    <span style={{ fontSize: '12px', color: 'var(--text-tertiary)', flexShrink: 0, marginLeft: '12px' }}>
+                      {isExpanded ? '▼' : '▶'}
+                    </span>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  {isExpanded && (
+                    <div className="gap-expand" style={{ borderLeftColor: borderColor }}>
+                      <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Why marked {g.sev}:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.why}</span></div>
+                      <div style={{ marginBottom: '8px' }}><strong style={{ color: 'var(--text-primary)' }}>Business Impact if unresolved:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.impact}</span></div>
+                      <div style={{ marginBottom: '12px' }}><strong style={{ color: 'var(--text-primary)' }}>Resolution Benefit:</strong> <span style={{ color: 'var(--text-secondary)' }}>{g.benefit}</span></div>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        {g.category.map((c, i) => <Badge key={i} text={c} color="gray" />)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
+              No open compliance gaps detected. Your library is fully covered!
+            </div>
+          )}
         </div>
+
       </div>
 
       {/* Remediation Output */}

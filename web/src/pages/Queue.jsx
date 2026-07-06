@@ -38,20 +38,7 @@ export default function Queue({ onQueueCountChange }) {
           conflict:      null,
           conflictDetail: null,
           expiresAt:     item.expires_at,
-        })) : DATA.queue.map(item => ({
-          id:            item.id,
-          dbId:          null,
-          conf:          item.conf,
-          uniqueControl: item.uniqueControl,
-          controlCode:   '—',
-          frameworkName: item.frameworks?.[0]?.label || '—',
-          clauseRef:     item.conflict || '—',
-          aiRationale:   item.conflictDetail?.issue || 'Review required.',
-          frameworks:    item.frameworks || [],
-          conflict:      item.conflict,
-          conflictDetail: item.conflictDetail,
-          expiresAt:     item.expiresAt || new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
-        }));
+        })) : [];
 
         setQueue(mappedQueue);
         if (onQueueCountChange) {
