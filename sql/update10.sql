@@ -16,7 +16,8 @@ TRUNCATE
   public.evidence, 
   public.sme_review_queue, 
   public.gaps, 
-  public.control_history
+  public.control_history,
+  public.notifications
 CASCADE;
 
 

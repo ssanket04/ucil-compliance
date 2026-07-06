@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DATA } from '../data';
-import { sb, runRegulatoryImpact, fetchRegulatoryChanges, CURRENT_USER, fetchScanInfo, formatTimestamp } from '../supabaseClient';
+import { sb, runRegulatoryImpact, fetchRegulatoryChanges, CURRENT_USER, fetchScanInfo, fetchFrameworks, formatTimestamp } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 
@@ -14,34 +14,28 @@ export default function Ingest() {
 
   // Local state for jobs to dynamically display live database rows from regulatory_changes
   const [jobs, setJobs] = useState([]);
-
-  const SOURCES = [
-    { name: 'ISO 27001:2022',     type: 'Framework',       note: 'Document', connected: true },
-    { name: 'NIST CSF 2.0',       type: 'Framework',       note: 'Document', connected: true },
-    { name: 'RBI CSF v2',         type: 'Framework',       note: 'Document', connected: true },
-    { name: 'PCI-DSS v4.0',       type: 'Framework',       note: 'Document', connected: true },
-    { name: 'COBIT 2019',         type: 'Framework',       note: 'Document', connected: true },
-    { name: 'SOX',                type: 'Framework',       note: 'Document', connected: true },
-    { name: 'RBI Circular 2024',  type: 'Circular',        note: 'Document', connected: true },
-    { name: 'Internal Policy v3', type: 'Internal Policy', note: 'Document', connected: true },
-  ];
+  // Dynamic sources fetched from database frameworks table instead of static SOURCES
+  const [sources, setSources] = useState([]);
 
   const typeColor = { Framework: 'blue', Circular: 'amber', 'Internal Policy': 'gray' };
   const icons     = { Framework: '📋', Circular: '📜', 'Internal Policy': '📁' };
 
   const loadData = async () => {
     try {
-      const [scanRaw, regChangesRaw] = await Promise.all([
+      const [scanRaw, regChangesRaw, frameworksRaw] = await Promise.all([
         fetchScanInfo(),
-        fetchRegulatoryChanges()
+        fetchRegulatoryChanges(),
+        fetchFrameworks()
       ]);
 
       const scanMap = {};
-      scanRaw.forEach(s => { scanMap[s.scan_type] = s; });
+      if (scanRaw) {
+        scanRaw.forEach(s => { scanMap[s.scan_type] = s; });
+      }
 
       const lastScanTimestamp = scanMap['circular_scan']?.completed_at
         ? formatTimestamp(scanMap['circular_scan'].completed_at)
-        : DATA.scanInfo.lastCircularScan.timestamp;
+        : '—';
 
       const scraperStatus = scanMap['circular_scan']?.status === 'running' ? 'Running…' : 'Active';
       setScanInfo({ timestamp: lastScanTimestamp, status: scraperStatus });
@@ -61,6 +55,16 @@ export default function Ingest() {
       }));
 
       setJobs(mappedJobs);
+
+      // Parse frameworks from database to populate Ingestion Sources dynamically
+      const mappedSources = frameworksRaw && frameworksRaw.length > 0 ? frameworksRaw.map(fw => ({
+        name:      fw.name,
+        type:      fw.type || 'Framework',
+        note:      fw.issuer || 'Document',
+        connected: fw.status === 'Loaded'
+      })) : [];
+
+      setSources(mappedSources);
     } catch (err) {
       console.error('Error fetching scan info in Ingest:', err);
     } finally {
@@ -98,75 +102,47 @@ export default function Ingest() {
       
       if (uploadError) throw uploadError;
 
-      setUploadProgress('Writing metadata to regulatory log...');
+      setUploadProgress('Analyzing document impact with AI model...');
 
-      // Step 3: Insert metadata row into public.regulatory_changes
-      const uniqueCircularId = `CIRC-${Date.now().toString().slice(-6)}-${file.name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)}`;
-      
-      const { data: newRegChange, error: dbError } = await sb
-        .from('regulatory_changes')
-        .insert({
-          circular_id:     uniqueCircularId,
-          title:           file.name.replace(/\.[^/.]+$/, ""),
-          issuer:          'Manual Ingest',
-          issued_date:     new Date().toISOString().split('T')[0],
-          file_path:       filePath,
-          status:          'In review',
-          detected_by:     'Manual' // Satisfies the database CHECK constraint: IN ('Manual', 'Web Scraper')
-        })
-        .select()
-        .single();
+      // Step 3: Call regulatory impact edge function
+      const fileName = file.name;
+      const res = await runRegulatoryImpact(fileName, filePath, sha256Hash);
 
-      if (dbError) throw dbError;
-
-      setUploadProgress('Triggering AI Regulatory Impact Model...');
-
-      // Step 4: Call AI regulatory-impact edge function
-      const aiResult = await runRegulatoryImpact(newRegChange.id);
-
-      setSuccessMessage(`Successfully ingested circular! AI detected ${aiResult.total_impacted || 0} impacted controls.`);
-      
-      // Reload everything dynamically from the database
+      setSuccessMessage(`Document "${file.name}" ingested successfully! Mapped to ${res.total_impacted} controls and flagged ${res.total_new_gaps} gaps.`);
       await loadData();
-
     } catch (err) {
       console.error('Manual ingestion failed:', err);
-      
-      // Extract detailed error from Supabase context response if available
-      let detailedMsg = err.message || 'Error occurred during manual ingestion.';
-      if (err.context && typeof err.context.json === 'function') {
+      // Fallback details parse if error is raw JSON from Edge Function
+      let friendlyError = err.message;
+      if (err.message && err.message.includes('{')) {
         try {
-          const errBody = await err.context.json();
-          if (errBody?.error) detailedMsg = errBody.error;
-        } catch {
-          try {
-            const errText = await err.context.text();
-            if (errText) detailedMsg = errText;
-          } catch {}
-        }
+          const startIdx = err.message.indexOf('{');
+          const jsonPayload = JSON.parse(err.message.substring(startIdx));
+          if (jsonPayload.error && jsonPayload.error.message) {
+            friendlyError = jsonPayload.error.message;
+          }
+        } catch (_) {}
       }
-      
-      setErrorMessage(detailedMsg);
+      setErrorMessage(friendlyError);
     } finally {
       setUploading(false);
       setUploadProgress('');
+      if (e.target) e.target.value = '';
     }
   };
 
-  const scraperStatus = scanInfo?.status || 'Active';
-  const lastScanTimestamp = scanInfo?.timestamp || DATA.scanInfo.lastCircularScan.timestamp;
+  const lastScanTimestamp = scanInfo?.timestamp || '—';
+  const scraperActiveState = scanInfo?.status || 'Inactive';
 
   return (
     <>
-      {/* Live Scraper Notification Banner */}
-      <div className="card" style={{ border: '1px solid var(--border-success)', background: 'rgba(46, 204, 113, 0.02)', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
-          <div style={{ fontSize: '24px', filter: 'drop-shadow(0 0 8px rgba(46, 204, 113, 0.4))' }}>🔄</div>
-          
+      {/* Top Banner Card */}
+      <div className="card" style={{ background: 'rgba(201, 168, 76, 0.02)', border: '1px solid var(--border-gold)', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexWrap: 'wrap' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text-success)', marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>Live Web Regulatory Scraper</span>
-              <span className="badge badge-green" style={{ textTransform: 'uppercase', fontSize: '9px' }}>{scraperStatus}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+              <span className="badge badge-amber" style={{ fontSize: '9px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Scraper: {scraperActiveState}</span>
+              <div className="card-title" style={{ margin: 0 }}>RBI, ISO, NIST Web Scraper Active</div>
             </div>
             <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
               Continuously parsing global regulatory sources (RBI, ISO, NIST) to automatically extract and map compliance updates.
@@ -206,19 +182,32 @@ export default function Ingest() {
       <div className="bento-grid">
         {/* Source Systems Grid */}
         <div className="col-8">
-          <div className="card" style={{ height: '100%', marginBottom: 0 }}>
+          <div className="card" style={{ height: '100%', marginBottom: 0, display: 'flex', flexDirection: 'column' }}>
             <div className="card-title">Connected Ingestion Sources</div>
-            <div className="src-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-              {SOURCES.map((s, idx) => (
-                <div className={`src-chip ${s.connected ? 'connected' : ''}`} key={idx}>
-                  <div style={{ fontSize: '18px' }}>{icons[s.type]}</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{s.name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>{s.type} · {s.note}</div>
-                  </div>
-                  <div className={`src-dot ${s.connected ? 'dot-on' : 'dot-off'}`}></div>
+            
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: sources.length > 0 ? 'flex-start' : 'center' }}>
+              {sources.length > 0 ? (
+                <div className="src-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
+                  {sources.map((s, idx) => (
+                    <div className={`src-chip ${s.connected ? 'connected' : ''}`} key={idx}>
+                      <div style={{ fontSize: '18px' }}>{icons[s.type] || '📋'}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '12.5px', fontWeight: 600, color: 'var(--text-primary)' }}>{s.name}</div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px' }}>{s.type} · {s.note}</div>
+                      </div>
+                      <div className={`src-dot ${s.connected ? 'dot-on' : 'dot-off'}`}></div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              ) : (
+                <div style={{ textAlign: 'center', padding: '36px 16px', color: 'var(--text-tertiary)' }}>
+                  <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔌</div>
+                  <div style={{ fontSize: '13px', fontWeight: 600 }}>No ingestion sources connected yet</div>
+                  <div style={{ fontSize: '10.5px', color: 'var(--text-secondary)', marginTop: '4px', maxWidth: '380px', margin: '4px auto 0' }}>
+                    Upload your first circular, guideline, or internal policy document to link a dynamic mapping source.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -312,7 +301,7 @@ export default function Ingest() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)', fontSize: '12px' }}>
                     No circulars ingested yet. Click above to upload your first document!
                   </td>
                 </tr>

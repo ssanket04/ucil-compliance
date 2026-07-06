@@ -21,7 +21,7 @@ export default function Notifications({ onNavigate }) {
           time:   timeAgo(n.created_at),
           unread: !n.is_read,
           action: n.trigger_event.includes('reject') ? 'evidence' : n.trigger_event.includes('critical') ? 'gaps' : 'dashboard'
-        })) : DATA.notifications;
+        })) : [];
 
         setNotifications(mappedNotifs);
         await markAllNotificationsRead();
