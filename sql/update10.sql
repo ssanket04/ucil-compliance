@@ -1,32 +1,49 @@
 -- ============================================================
--- UCIL SYSTEM UPDATE 10 — SAFE MOCK DATA CLEANUP
+-- UCIL SYSTEM UPDATE 10 — COMPLETE SYSTEM PURGE (CLEAN START)
 -- ============================================================
 -- Run AFTER: update9.sql
 --
 -- What this covers:
---  A. Wipes all user-generated mock evidence, logs, gaps, audit timelines, and review items
---  B. Deletes mock circulars and circular mappings, leaving baseline frameworks (ISO/NIST),
---     domains, and baseline controls intact to ensure the AI mapping engine has reference data.
+--  A. Performs a complete truncate of ALL compliance assets, maps, 
+--     and historical records (leaving only the users table intact).
+--  B. Ensures frameworks, domains, and controls are 100% clean and
+--     empty, enabling the system to build everything dynamically
+--     solely from user-uploaded or scraped documents.
 -- ============================================================
 
 
--- ── A. TRUNCATE MOCK TIMELINES, EVIDENCE, GAPS, QUEUES ────────
+-- ── A. TRUNCATE ALL SCHEMAS AND RELATIONSHIPS ───────────────
 TRUNCATE 
   public.evidence_timeline, 
   public.evidence, 
   public.sme_review_queue, 
   public.gaps, 
   public.control_history,
-  public.notifications
+  public.notifications,
+  public.control_framework_mappings,
+  public.controls,
+  public.domains,
+  public.frameworks,
+  public.regulatory_changes
 CASCADE;
 
 
--- ── B. DELETE MOCK CIRCULARS AND ASSOCIATED MAPPINGS ──────────
-DELETE FROM public.regulatory_changes;
-
-DELETE FROM public.control_framework_mappings 
-WHERE framework_id IN (
-  SELECT id FROM public.frameworks WHERE type = 'Circular'
-);
-
-DELETE FROM public.frameworks WHERE type = 'Circular';
+-- ── B. RESET METRICS TRACKER TO ZERO STATES ──────────────────
+UPDATE public.metrics
+SET
+  unique_canonical = 0,
+  implemented = 0,
+  in_progress_sme = 0,
+  in_progress_ev_review = 0,
+  in_progress_ev_pending = 0,
+  in_progress_ev_reassigned = 0,
+  open_gaps = 0,
+  critical_gaps = 0,
+  circulars_ingested = 0,
+  frameworks_ingested = 0,
+  internal_policies = 0,
+  total_sources = 0,
+  ai_auto_approval_rate = 0,
+  control_multiplier = 1.0,
+  total_mappings = 0
+WHERE id = 1;
