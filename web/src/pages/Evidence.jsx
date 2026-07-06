@@ -233,12 +233,11 @@ export default function Evidence({ controlId }) {
     return <div style={{ padding: '24px', color: 'var(--text-secondary)' }}>Loading Evidence Management...</div>;
   }
 
-  const m = metrics || DATA.metrics;
-  const approvedCount = m.implemented || folders.filter(f => f.overallStatus === 'Approved').length;
-  const underReviewCount = m.in_progress_ev_review ?? m.inProgress?.evidenceUnderReview ?? folders.filter(f => f.overallStatus === 'Under Review').length;
-  const reassignedCount = m.in_progress_ev_reassigned ?? m.inProgress?.evidenceReassigned ?? folders.filter(f => f.overallStatus === 'Reassigned').length;
-  const pendingCount = m.in_progress_ev_pending ?? m.inProgress?.evidencePending ?? folders.filter(f => f.overallStatus === 'Pending').length;
-  const rejectedCount = m.open_gaps || m.openGaps || folders.filter(f => f.overallStatus === 'Rejected').length;
+  const approvedCount = metrics?.implemented ?? folders.filter(f => f.overallStatus === 'Approved').length;
+  const underReviewCount = metrics?.in_progress_ev_review ?? folders.filter(f => f.overallStatus === 'Under Review').length;
+  const reassignedCount = metrics?.in_progress_ev_reassigned ?? folders.filter(f => f.overallStatus === 'Reassigned').length;
+  const pendingCount = metrics?.in_progress_ev_pending ?? folders.filter(f => f.overallStatus === 'Pending').length;
+  const rejectedCount = metrics?.open_gaps ?? folders.filter(f => f.overallStatus === 'Rejected').length;
 
   const fileIcons = { '.pdf': '📄', '.xlsx': '📊', '.docx': '📝' };
   const getIcon = (name) => fileIcons[name.slice(name.lastIndexOf('.')).toLowerCase()] || '📎';
