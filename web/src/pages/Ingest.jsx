@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DATA } from '../data';
-import { sb, runRegulatoryImpact, CURRENT_USER, fetchScanInfo, formatTimestamp } from '../supabaseClient';
+import { sb, runRegulatoryImpact, fetchRegulatoryChanges, CURRENT_USER, fetchScanInfo, formatTimestamp } from '../supabaseClient';
 import Badge from '../components/Badge';
 import StatusBadge from '../components/StatusBadge';
 
@@ -12,13 +12,8 @@ export default function Ingest() {
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Local state for jobs to dynamically append newly ingested circulars
-  const [jobs, setJobs] = useState([
-    { source: 'RBI CSF v2.0',       type: 'Circular',        controls: 85,   status: 'Completed',  time: 'Today 09:14',  method: 'AI Fetch',      uploader: 'System',    uploaderDesig: '',                   approver: 'Rajiv Chaudhary', approverDesig: 'VP Compliance' },
-    { source: 'ISO 27001',          type: 'Framework',       controls: 1204, status: 'Completed',  time: 'Today 07:00',  method: 'AI Fetch',      uploader: 'System',    uploaderDesig: '',                   approver: 'Priya Sharma',    approverDesig: 'Director Risk' },
-    { source: 'Internal Policy v3', type: 'Internal Policy', controls: 89,   status: 'Completed',  time: 'Yesterday',    method: 'Manual Upload', uploader: 'Anita Roy', uploaderDesig: 'Senior Analyst',     approver: 'Sanjay Mehta',    approverDesig: 'Manager IT Security' },
-    { source: 'SOX RCM Q1',         type: 'Framework',       controls: 214,  status: 'Processing', time: 'Today 10:42',  method: 'Manual Upload', uploader: 'Mohan Das', uploaderDesig: 'Compliance Analyst', approver: 'Pending',         approverDesig: '' },
-  ]);
+  // Local state for jobs to dynamically display live database rows from regulatory_changes
+  const [jobs, setJobs] = useState([]);
 
   const SOURCES = [
     { name: 'ISO 27001:2022',     type: 'Framework',       note: 'Document', connected: true },
@@ -34,26 +29,47 @@ export default function Ingest() {
   const typeColor = { Framework: 'blue', Circular: 'amber', 'Internal Policy': 'gray' };
   const icons     = { Framework: '📋', Circular: '📜', 'Internal Policy': '📁' };
 
-  useEffect(() => {
-    async function loadScan() {
-      try {
-        const scanRaw = await fetchScanInfo();
-        const scanMap = {};
-        scanRaw.forEach(s => { scanMap[s.scan_type] = s; });
+  const loadData = async () => {
+    try {
+      const [scanRaw, regChangesRaw] = await Promise.all([
+        fetchScanInfo(),
+        fetchRegulatoryChanges()
+      ]);
 
-        const lastScanTimestamp = scanMap['circular_scan']?.completed_at
-          ? formatTimestamp(scanMap['circular_scan'].completed_at)
-          : DATA.scanInfo.lastCircularScan.timestamp;
+      const scanMap = {};
+      scanRaw.forEach(s => { scanMap[s.scan_type] = s; });
 
-        const scraperStatus = scanMap['circular_scan']?.status === 'running' ? 'Running…' : 'Active';
-        setScanInfo({ timestamp: lastScanTimestamp, status: scraperStatus });
-      } catch (err) {
-        console.error('Error fetching scan info in Ingest:', err);
-      } finally {
-        setLoading(false);
-      }
+      const lastScanTimestamp = scanMap['circular_scan']?.completed_at
+        ? formatTimestamp(scanMap['circular_scan'].completed_at)
+        : DATA.scanInfo.lastCircularScan.timestamp;
+
+      const scraperStatus = scanMap['circular_scan']?.status === 'running' ? 'Running…' : 'Active';
+      setScanInfo({ timestamp: lastScanTimestamp, status: scraperStatus });
+
+      // Convert database records from regulatory_changes into jobs structure
+      const mappedJobs = regChangesRaw.map(r => ({
+        source:        r.title || r.circular_id,
+        type:          'Circular',
+        controls:      r.total_impacted || 0,
+        status:        r.status === 'In review' ? 'Processing' : 'Completed',
+        time:          r.created_at ? formatTimestamp(r.created_at) : '—',
+        method:        r.detected_by === 'Manual' ? 'Manual Upload' : 'AI Fetch',
+        uploader:      r.detected_by === 'Manual' ? 'Compliance Staff' : 'System',
+        uploaderDesig: '',
+        approver:      r.status === 'In review' ? 'Pending Review' : 'System Auto-Approved',
+        approverDesig: ''
+      }));
+
+      setJobs(mappedJobs);
+    } catch (err) {
+      console.error('Error fetching scan info in Ingest:', err);
+    } finally {
+      setLoading(false);
     }
-    loadScan();
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const handleManualUpload = async (e) => {
@@ -110,21 +126,8 @@ export default function Ingest() {
 
       setSuccessMessage(`Successfully ingested circular! AI detected ${aiResult.total_impacted || 0} impacted controls.`);
       
-      // Update local ingestion history table dynamically
-      const newJob = {
-        source: newRegChange.title,
-        type: 'Circular',
-        controls: aiResult.total_impacted || 0,
-        status: 'Completed',
-        time: 'Just now',
-        method: 'Manual Upload',
-        uploader: CURRENT_USER ? CURRENT_USER.full_name : 'You',
-        uploaderDesig: CURRENT_USER ? CURRENT_USER.role : 'Compliance Officer',
-        approver: 'Pending Review',
-        approverDesig: ''
-      };
-      
-      setJobs(prev => [newJob, ...prev]);
+      // Reload everything dynamically from the database
+      await loadData();
 
     } catch (err) {
       console.error('Manual ingestion failed:', err);
@@ -276,30 +279,44 @@ export default function Ingest() {
               </tr>
             </thead>
             <tbody>
-              {jobs.map((j, idx) => (
-                <tr key={idx}>
-                  <td style={{ fontSize: '12.5px', fontWeight: 600 }}>
-                    <div>{j.source}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px', fontWeight: 'normal' }}>Processed {j.time}</div>
+              {loading ? (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                    Loading ingestion logs...
                   </td>
-                  <td><Badge text={j.type} color={typeColor[j.type]} /></td>
-                  <td style={{ fontWeight: 600, color: 'var(--accent-gold-lt)' }}>{j.controls.toLocaleString()}</td>
-                  <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{j.method}</td>
-                  <td>
-                    <div style={{ fontSize: '12px', fontWeight: 500 }}>{j.uploader}</div>
-                    {j.uploaderDesig && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{j.uploaderDesig}</div>
-                    )}
-                  </td>
-                  <td>
-                    <div style={{ fontSize: '12px', fontWeight: 500 }}>{j.approver}</div>
-                    {j.approverDesig && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{j.approverDesig}</div>
-                    )}
-                  </td>
-                  <td><StatusBadge status={j.status} /></td>
                 </tr>
-              ))}
+              ) : jobs.length > 0 ? (
+                jobs.map((j, idx) => (
+                  <tr key={idx}>
+                    <td style={{ fontSize: '12.5px', fontWeight: 600 }}>
+                      <div>{j.source}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px', fontWeight: 'normal' }}>Processed {j.time}</div>
+                    </td>
+                    <td><Badge text={j.type} color={typeColor[j.type]} /></td>
+                    <td style={{ fontWeight: 600, color: 'var(--accent-gold-lt)' }}>{j.controls.toLocaleString()}</td>
+                    <td style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{j.method}</td>
+                    <td>
+                      <div style={{ fontSize: '12px', fontWeight: 500 }}>{j.uploader}</div>
+                      {j.uploaderDesig && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{j.uploaderDesig}</div>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontSize: '12px', fontWeight: 500 }}>{j.approver}</div>
+                      {j.approverDesig && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{j.approverDesig}</div>
+                      )}
+                    </td>
+                    <td><StatusBadge status={j.status} /></td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-tertiary)' }}>
+                    No circulars ingested yet. Click above to upload your first document!
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
